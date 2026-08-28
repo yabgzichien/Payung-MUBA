@@ -27,16 +27,21 @@ export function readClient() {
   return new ThetanutsClient({ chainId: BASE_CHAIN_ID, provider });
 }
 
+/** Burner wallet from .env. Exported so helpers (e.g. the Aave deposit) can sign without a second env-parsing path. */
+export function signerFromEnv(provider: ethers.Provider): ethers.Wallet {
+  const pk = process.env.PRIVATE_KEY;
+  if (!pk || pk === '0x') {
+    throw new Error('PRIVATE_KEY missing. Copy .env.example to .env. BURNER WALLET ONLY.');
+  }
+  return new ethers.Wallet(pk, provider);
+}
+
 /** Signing client. Only needed for `execute()`. Requires PRIVATE_KEY. */
 export function writeClient() {
   const provider = new ethers.JsonRpcProvider(
     process.env.BASE_RPC_URL || 'https://mainnet.base.org'
   );
-  const pk = process.env.PRIVATE_KEY;
-  if (!pk || pk === '0x') {
-    throw new Error('PRIVATE_KEY missing. Copy .env.example to .env. BURNER WALLET ONLY.');
-  }
-  const signer = new ethers.Wallet(pk, provider);
+  const signer = signerFromEnv(provider);
   return new ThetanutsClient({ chainId: BASE_CHAIN_ID, provider, signer });
 }
 

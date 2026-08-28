@@ -4,6 +4,7 @@
  *   npm run book                      # what's live right now
  *   npm run quote -- 2400 10          # price a $2400 floor with 10 USDC
  *   npm run whoami                    # check your burner wallet balances
+ *   npm run deposit -- 12             # top up aBasUSDC via Aave if short
  *   npm run simulate -- 2400 10       # FREE dry run of the real transaction
  *   npm run execute -- 2400 10        # spends real USDC on Base mainnet
  */
@@ -13,7 +14,9 @@ import { ethers } from 'ethers';
 import {
   readClient, writeClient, getBook, findCandidates, quote,
   simulate, execute, payoffCurve, USDC_DECIMALS, coverageGapDays,
+  collateralDecimals, dollarTokens, tokenSymbol,
 } from './core.js';
+import { ensureDollarCollateral } from './aave.js';
 
 const [cmd, ...args] = process.argv.slice(2);
 const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -48,7 +51,32 @@ async function main() {
       console.log(`\naddress   ${addr}`);
       console.log(`USDC      ${(Number(bal) / 10 ** USDC_DECIMALS).toFixed(4)}`);
       console.log(`ETH (gas) ${ethers.formatEther(eth)}`);
+
+      const book = await getBook(client);
+      const dollarSet = await dollarTokens(client, book);
+      for (const t of dollarSet) {
+        const sym = await tokenSymbol(client, t);
+        const d = await collateralDecimals(client, t);
+        const b = await client.erc20.getBalance(t, addr);
+        console.log(`${sym.padEnd(9)} ${(Number(b) / 10 ** d).toFixed(4)}`);
+      }
+
       console.log(`\nexplorer  https://basescan.org/address/${addr}\n`);
+      break;
+    }
+
+    case 'deposit': {
+      // npm run deposit -- 15   -> ensure the wallet holds 15 aBasUSDC-equivalents
+      const amountUsdc = Number(args[0] ?? 15);
+      const client = writeClient();
+      const book = await getBook(client);
+      const target = book.find((c) => !c.isCall && !c.makerIsBuyer);
+      if (!target) { console.log('No buyable puts on the book to read a collateral token from.'); return; }
+      const dec = await collateralDecimals(client, target.collateralToken);
+      const units = BigInt(Math.round(amountUsdc * 10 ** dec));
+      console.log(`Ensuring ${amountUsdc} of ${target.collateralToken} (the live book's buyable-put collateral)...`);
+      const res = await ensureDollarCollateral(client, target.collateralToken, units);
+      console.log(res.deposited ? `Deposited via Aave: https://basescan.org/tx/${res.hash}` : 'Already sufficient — nothing to do.');
       break;
     }
 
@@ -105,6 +133,10 @@ async function main() {
       console.log(sim.ok ? '  ✓ would succeed' : `  ✗ would revert: ${sim.error}`);
       if (!sim.ok || cmd === 'simulate') break;
 
+      const wclient = writeClient();
+      const dec = await collateralDecimals(wclient, pick.collateralToken);
+      await ensureDollarCollateral(wclient, pick.collateralToken, BigInt(Math.round(q.spendUsdc * 10 ** dec)));
+
       console.log('\n*** SPENDING REAL USDC ON BASE MAINNET ***');
       const res = await execute(pick, q.spendUsdc);
       console.log(`\n  tx    ${res.hash}`);
@@ -115,11 +147,12 @@ async function main() {
     }
 
     default:
-      console.log('commands: book | whoami | quote | simulate | execute');
+      console.log('commands: book | whoami | deposit | quote | simulate | execute');
       console.log('  npm run book');
       console.log('  npm run quote -- 2400 10');
       console.log('  npm run simulate -- 2400 10');
       console.log('  npm run execute -- 2400 10');
+      console.log('  npm run deposit -- 12');
   }
 }
 

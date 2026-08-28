@@ -10,6 +10,7 @@
     "simulate": "tsx src/cli.ts simulate",
     "execute": "tsx src/cli.ts execute",
     "whoami": "tsx src/cli.ts whoami",
+    "deposit": "tsx src/cli.ts deposit",
     "test": "vitest run"
   },
   "dependencies": {

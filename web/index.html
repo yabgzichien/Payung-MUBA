@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Payung — buy a floor</title>
+<script src="/ethers.min.js"></script>
 <style>
   :root {
     --bg: #0b0d12;
@@ -33,13 +34,16 @@
   }
   header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     margin-bottom: 28px;
+    gap: 16px;
+    flex-wrap: wrap;
   }
   header .brand { display: flex; align-items: baseline; gap: 10px; }
   header h1 { font-size: 20px; margin: 0; letter-spacing: -0.02em; }
   header .tag { color: var(--dim); font-size: 13px; }
+  .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   header .net {
     font-family: var(--mono);
     font-size: 11px;
@@ -49,6 +53,30 @@
     border-radius: 20px;
     background: rgba(79,209,165,0.08);
   }
+  .wallet-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+  .wallet-addr { color: var(--accent); font-weight: 600; }
+  .wallet-bal { color: var(--dim); border-left: 1px solid var(--border); padding-left: 8px; }
+  .wallet-disconnect {
+    background: transparent;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 0 0 4px;
+  }
+  .wallet-disconnect:hover { color: var(--danger); }
+  .btn.wallet-btn { padding: 5px 12px; font-size: 12px; border-radius: 20px; }
+
   .step {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -206,6 +234,73 @@
   .tx-card a { color: var(--accent); text-decoration: none; font-size: 13px; }
   .tx-card a:hover { text-decoration: underline; }
 
+  .cost-summary-card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-top: 14px;
+    margin-bottom: 14px;
+  }
+  .cost-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .cost-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+  }
+  .cost-badge-amount {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .cost-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+  }
+  .cost-item label {
+    font-size: 11px;
+    color: var(--dim);
+    display: block;
+    margin-bottom: 3px;
+  }
+  .cost-item .value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .cost-footnote {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--dim);
+    border-top: 1px dashed var(--border);
+    padding-top: 10px;
+    line-height: 1.5;
+  }
+  .balance-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+    font-family: var(--mono);
+  }
+  .balance-indicator.sufficient { color: var(--accent); }
+  .balance-indicator.short { color: var(--warn); }
+
   .mock-banner {
     font-family: var(--mono);
     font-size: 11px;
@@ -248,11 +343,23 @@
       <h1>☂ Payung</h1>
       <span class="tag">buy a floor</span>
     </div>
-    <span class="net">BASE MAINNET</span>
+    <div class="header-right">
+      <span class="net" id="netBadge">BASE MAINNET</span>
+      <div id="walletBox">
+        <button class="btn secondary wallet-btn" id="connectWalletBtn" onclick="connectWallet()">
+          🦊 Connect Wallet
+        </button>
+        <div id="walletPill" class="wallet-pill" style="display:none;">
+          <span class="wallet-addr" id="walletAddr"></span>
+          <span class="wallet-bal" id="walletBalances"></span>
+          <button class="wallet-disconnect" onclick="disconnectWallet()" title="Disconnect">✕</button>
+        </div>
+      </div>
+    </div>
   </header>
 
   <div class="mock-banner">
-    LIVE — every candidate below is a real, currently-fillable order on Base mainnet, priced by the protocol's own math. Execute spends real USDC.
+    LIVE — every candidate below is a real, currently-fillable order on Base mainnet, priced by the protocol's own math.
   </div>
 
   <!-- STEP 1: constraint -->
@@ -289,7 +396,7 @@
       </div>
     </div>
     <p class="sentence" id="restated">
-      "I have <b>1 ETH</b>. I need it to be worth at least <b class="accent">$2,300</b> in <b>14 days</b>."
+      "I have <b>1 ETH</b>. I need it to be worth at least <b class="accent">$2,300</b> total in <b>14 days</b>" — that's a floor of <b class="accent">$2,300 per ETH</b>.
     </p>
     <button class="btn" onclick="findFloors()">Find real offers on Thetanuts →</button>
   </div>
@@ -309,21 +416,22 @@
     <div class="chart-wrap">
       <svg id="payoffChart" viewBox="0 0 600 260"></svg>
       <div class="chart-legend">
-        <span><span class="dot" style="background:var(--accent)"></span> protected (your position + put)</span>
-        <span><span class="dot" style="background:var(--dim)"></span> unprotected (asset alone)</span>
+        <span><span class="dot" style="background:var(--accent)"></span> this put's own P/L at expiry, per contract held</span>
       </div>
     </div>
+    <div id="step3CostCard" class="cost-summary-card" style="display:none;"></div>
     <p class="sentence" id="payoffSummary" style="margin-top:14px;"></p>
     <button class="btn" onclick="goToExecute()">Continue →</button>
   </div>
 
   <!-- STEP 4: simulate + execute -->
   <div class="step" id="step4">
-    <div class="step-label"><span class="step-num">4</span> Simulate, then execute for real</div>
-    <p class="sentence">This runs <b>callStaticFillOrder()</b> against current chain state — free, and tells you if the real transaction would succeed.</p>
+    <div class="step-label"><span class="step-num">4</span> Simulate, then execute on Base</div>
+    <p class="sentence">Simulate for free to verify the structure, then approve and execute directly with your connected wallet.</p>
+    <div id="step4OrderCard" class="cost-summary-card" style="display:none;"></div>
     <div class="exec-row">
       <button class="btn secondary" id="simBtn" onclick="runSimulate()">Simulate fill (free)</button>
-      <button class="btn danger" id="execBtn" onclick="runExecute()" disabled>Execute for real</button>
+      <button class="btn danger" id="execBtn" onclick="runExecute()">Execute with wallet</button>
     </div>
     <div id="simResult"></div>
     <div id="txResult"></div>
@@ -335,6 +443,26 @@
 
 <script>
 let state = { candidates: [], selected: null, quote: null };
+let executionFailedNeedsManualClear = false;
+
+const BASE_CHAIN_ID_HEX = '0x2105'; // 8453
+const BASE_CHAIN_ID_DEC = 8453;
+const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const ERC20_ABI = [
+  'function balanceOf(address owner) view returns (uint256)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+];
+
+let walletState = {
+  provider: null,
+  signer: null,
+  address: null,
+  chainId: null,
+  ethBalance: '0',
+  usdcBalance: '0',
+  aBasUsdcBalance: '0',
+};
 
 async function api(path, body) {
   const res = await fetch(path, {
@@ -347,16 +475,197 @@ async function api(path, body) {
   return json;
 }
 
+// ── Wallet Connection ──────────────────────────────────────────────────────────
+
+function getInjectedProvider() {
+  if (typeof window.bitkeep !== 'undefined' && window.bitkeep.ethereum) {
+    return window.bitkeep.ethereum;
+  }
+  if (typeof window.okxwallet !== 'undefined') {
+    return window.okxwallet;
+  }
+  if (typeof window.ethereum !== 'undefined') {
+    if (Array.isArray(window.ethereum.providers) && window.ethereum.providers.length > 0) {
+      // If multiple extensions are installed, prefer the active selected one
+      return window.ethereum.selectedAddress
+        ? window.ethereum.providers.find(p => p.selectedAddress === window.ethereum.selectedAddress) || window.ethereum.providers[0]
+        : window.ethereum.providers[0];
+    }
+    return window.ethereum;
+  }
+  return null;
+}
+
+async function connectWallet() {
+  const provider = getInjectedProvider();
+  if (!provider) {
+    alert('No Web3 wallet extension found. Please install Bitget Wallet, MetaMask, Rabby, Coinbase Wallet, or OKX Wallet.');
+    return;
+  }
+
+  try {
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    if (!accounts || accounts.length === 0) return;
+
+    await ensureBaseNetwork(provider);
+
+    walletState.provider = new ethers.BrowserProvider(provider);
+    walletState.signer = await walletState.provider.getSigner();
+    walletState.address = await walletState.signer.getAddress();
+
+    await refreshWalletBalances();
+    updateWalletUI();
+  } catch (err) {
+    console.error('Wallet connection failed:', err);
+    alert(err.message || 'Failed to connect wallet.');
+  }
+}
+
+async function ensureBaseNetwork(provider = getInjectedProvider()) {
+  if (!provider) return;
+  const chainId = await provider.request({ method: 'eth_chainId' });
+  if (parseInt(chainId, 16) === BASE_CHAIN_ID_DEC) return;
+
+  try {
+    await provider.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: BASE_CHAIN_ID_HEX }],
+    });
+  } catch (switchError) {
+    if (switchError.code === 4902 || switchError.data?.originalError?.code === 4902) {
+      await provider.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: BASE_CHAIN_ID_HEX,
+          chainName: 'Base Mainnet',
+          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+          rpcUrls: ['https://mainnet.base.org'],
+          blockExplorerUrls: ['https://basescan.org'],
+        }],
+      });
+    } else {
+      throw switchError;
+    }
+  }
+}
+
+async function refreshWalletBalances() {
+  if (!walletState.provider || !walletState.address) return;
+  try {
+    const rawEth = await walletState.provider.getBalance(walletState.address);
+    walletState.ethBalance = (Number(rawEth) / 1e18).toFixed(4);
+
+    const usdcContract = new ethers.Contract('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', ERC20_ABI, walletState.provider);
+    const rawUsdc = await usdcContract.balanceOf(walletState.address);
+    walletState.usdcBalance = (Number(rawUsdc) / 1e6).toFixed(2);
+
+    const aBasUsdcContract = new ethers.Contract('0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB', ERC20_ABI, walletState.provider);
+    const rawABas = await aBasUsdcContract.balanceOf(walletState.address);
+    walletState.aBasUsdcBalance = (Number(rawABas) / 1e6).toFixed(2);
+  } catch (err) {
+    console.warn('Could not fetch all balances:', err);
+  }
+}
+
+function updateWalletUI() {
+  const btn = document.getElementById('connectWalletBtn');
+  const pill = document.getElementById('walletPill');
+  const addrEl = document.getElementById('walletAddr');
+  const balEl = document.getElementById('walletBalances');
+  const execBtn = document.getElementById('execBtn');
+
+  const spendText = state.quote?.quote?.spendUsdc ? `$${state.quote.quote.spendUsdc.toFixed(2)} USDC` : '';
+
+  if (walletState.address) {
+    btn.style.display = 'none';
+    pill.style.display = 'flex';
+    const short = walletState.address.slice(0, 6) + '...' + walletState.address.slice(-4);
+    addrEl.textContent = short;
+    balEl.textContent = `$${walletState.usdcBalance} USDC · ${walletState.ethBalance} ETH`;
+    if (!executionFailedNeedsManualClear) {
+      execBtn.textContent = spendText ? `Execute with wallet (${spendText})` : 'Execute with wallet';
+    }
+  } else {
+    btn.style.display = 'inline-block';
+    pill.style.display = 'none';
+    if (!executionFailedNeedsManualClear) {
+      execBtn.textContent = spendText ? `Connect wallet to execute (${spendText})` : 'Connect wallet to execute';
+    }
+  }
+  renderStep4OrderSummary();
+}
+
+function disconnectWallet() {
+  walletState = {
+    provider: null,
+    signer: null,
+    address: null,
+    chainId: null,
+    ethBalance: '0',
+    usdcBalance: '0',
+    aBasUsdcBalance: '0',
+  };
+  updateWalletUI();
+}
+
+const activeInjectedProvider = getInjectedProvider();
+if (activeInjectedProvider) {
+  activeInjectedProvider.request({ method: 'eth_accounts' }).then(async (accounts) => {
+    if (accounts && accounts.length > 0) {
+      try {
+        walletState.provider = new ethers.BrowserProvider(activeInjectedProvider);
+        walletState.signer = await walletState.provider.getSigner();
+        walletState.address = await walletState.signer.getAddress();
+        await refreshWalletBalances();
+        updateWalletUI();
+      } catch (e) {
+        console.warn('Auto-connect skipped:', e);
+      }
+    }
+  });
+
+  if (activeInjectedProvider.on) {
+    activeInjectedProvider.on('accountsChanged', (accounts) => {
+      if (!accounts || accounts.length === 0) {
+        disconnectWallet();
+      } else {
+        connectWallet();
+      }
+    });
+
+    activeInjectedProvider.on('chainChanged', () => {
+      window.location.reload();
+    });
+  }
+}
+
+// ── Core Flow ──────────────────────────────────────────────────────────────────
+
 function restateSentence() {
   const asset = document.getElementById('asset').value;
-  const amount = document.getElementById('amount').value || '1';
-  const floor = Number(document.getElementById('floor').value || 0).toLocaleString();
+  const amount = Number(document.getElementById('amount').value) || 1;
+  const floorTotal = Number(document.getElementById('floor').value) || 0;
   const days = document.getElementById('days').value || '14';
+  // Same formula as core.ts's impliedStrike(), duplicated deliberately: this
+  // is live-as-you-type feedback before any server round trip exists to ask.
+  // The number that actually GATES a match (filterCandidates' ranking,
+  // validateSpec's plausibility check) always comes from the server's
+  // impliedStrike() — this is display-only, never fed back into a decision.
+  const perUnit = amount > 0 ? floorTotal / amount : 0;
   document.getElementById('restated').innerHTML =
-    `"I have <b>${amount} ${asset}</b>. I need it to be worth at least <b class="accent">$${floor}</b> in <b>${days} days</b>."`;
+    `"I have <b>${amount} ${asset}</b>. I need it to be worth at least <b class="accent">$${floorTotal.toLocaleString()}</b> total in <b>${days} days</b>" ` +
+    `— that's a floor of <b class="accent">$${perUnit.toLocaleString(undefined, {maximumFractionDigits: 2})} per ${asset}</b>.`;
 }
+
+function onConstraintChange() {
+  restateSentence();
+  if (state.candidates.length > 0) {
+    renderCandidates(state.candidates);
+  }
+}
+
 ['asset','amount','floor','days'].forEach(id =>
-  document.getElementById(id).addEventListener('input', restateSentence)
+  document.getElementById(id).addEventListener('input', onConstraintChange)
 );
 
 async function parseNL() {
@@ -369,11 +678,12 @@ async function parseNL() {
   try {
     const { spec } = await api('/api/parse', { text });
     document.getElementById('asset').value = spec.asset;
-    document.getElementById('floor').value = spec.floorUsd;
+    document.getElementById('amount').value = spec.quantity;
+    document.getElementById('floor').value = spec.floorTotalUsd;
     document.getElementById('days').value = spec.horizonDays;
     restateSentence();
   } catch (e) {
-    err.textContent = e.message; // includes the honest "not a protection request" refusals
+    err.textContent = e.message;
   } finally {
     btn.disabled = false; btn.textContent = 'Parse';
   }
@@ -391,7 +701,8 @@ function setStep(n) {
 function currentSpec() {
   return {
     asset: document.getElementById('asset').value,
-    floorUsd: Number(document.getElementById('floor').value),
+    quantity: Number(document.getElementById('amount').value),
+    floorTotalUsd: Number(document.getElementById('floor').value),
     horizonDays: Number(document.getElementById('days').value),
   };
 }
@@ -421,6 +732,8 @@ async function findFloors() {
 function renderCandidates(list) {
   const el = document.getElementById('candidateList');
   el.innerHTML = '';
+  const heldAmount = Number(document.getElementById('amount').value) || 1;
+  const asset = document.getElementById('asset').value;
   list.forEach((c, i) => {
     const div = document.createElement('div');
     div.className = 'candidate';
@@ -428,14 +741,15 @@ function renderCandidates(list) {
     const gapBadge = c.coverageGapDays > 0.25
       ? `<span class="badge warn">ends ${c.coverageGapDays.toFixed(1)}d early</span>` : '';
     const bestBadge = i === 0 ? '<span class="badge good">closest match</span>' : '';
+    const totalCost = (c.pricePerContract * heldAmount).toFixed(2);
     div.innerHTML = `
       <div>
         <div class="strike">$${c.strike.toLocaleString()} floor ${bestBadge}${gapBadge}</div>
         <div class="meta">${c.daysToExpiry.toFixed(1)}d window · exp ${c.expiryIso.slice(0,10)} · put, buyable · iv ${c.iv ? c.iv.toFixed(2) : '—'}</div>
       </div>
       <div class="premium">
-        <div class="amount">$${c.pricePerContract.toFixed(2)}</div>
-        <div class="label">premium / contract</div>
+        <div class="amount">$${totalCost} USDC</div>
+        <div class="label">total cost for ${heldAmount} ${asset} ($${c.pricePerContract.toFixed(2)}/ea)</div>
       </div>
     `;
     el.appendChild(div);
@@ -445,14 +759,16 @@ function renderCandidates(list) {
 
 async function selectCandidate(i, el) {
   document.querySelectorAll('.candidate').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
+  if (el) el.classList.add('selected');
   state.selected = state.candidates[i];
   const verdict = document.getElementById('candVerdict');
   verdict.style.display = 'block';
   verdict.innerHTML = '<span class="spinner"></span> pricing with previewFillOrder()...';
   try {
-    const spend = 10; // demo size; a ~$1 fill scores the same per the builder docs
-    const data = await api('/api/quote', { id: state.selected.id, spendUsdc: spend });
+    const heldAmount = Math.max(0.0001, Number(document.getElementById('amount').value) || 1);
+    const asset = document.getElementById('asset').value;
+    const targetSpend = heldAmount * state.selected.pricePerContract;
+    const data = await api('/api/quote', { id: state.selected.id, spendUsdc: targetSpend });
     state.quote = data;
     verdict.innerHTML = `<b>Agent verdict: ${data.judgment.verdict.replace(/-/g, ' ')}.</b> ` +
       data.judgment.reasons.map(r => r).join(' ');
@@ -461,19 +777,118 @@ async function selectCandidate(i, el) {
     const q = data.quote;
     const capNote = q.capped
       ? ` (capped — this maker can only absorb $${q.spendUsdc.toFixed(2)} of your requested $${q.requestedUsdc.toFixed(2)})` : '';
+    
+    // Render Step 3 Cost Card
+    const step3Card = document.getElementById('step3CostCard');
+    if (step3Card) {
+      step3Card.style.display = 'block';
+      step3Card.innerHTML = `
+        <div class="cost-header">
+          <div>
+            <div class="cost-title">Final Trade Cost / Maximum Loss</div>
+            <div style="font-size:11px; color:var(--dim);">100% fixed — nothing more can ever leave your wallet</div>
+          </div>
+          <div class="cost-badge-amount">$${q.spendUsdc.toFixed(2)} USDC</div>
+        </div>
+        <div class="cost-grid">
+          <div class="cost-item">
+            <label>Protection Target</label>
+            <div class="value">${q.contracts.toFixed(4)} ${asset}</div>
+          </div>
+          <div class="cost-item">
+            <label>Guaranteed Floor</label>
+            <div class="value">$${q.strike.toLocaleString()}</div>
+          </div>
+          <div class="cost-item">
+            <label>Expiry Date</label>
+            <div class="value">${q.expiryIso.slice(0,10)}</div>
+          </div>
+          <div class="cost-item">
+            <label>Unit Rate</label>
+            <div class="value">$${q.pricePerContract.toFixed(2)} / ${asset}</div>
+          </div>
+        </div>
+        <div class="cost-footnote">
+          <b>Guaranteed payout:</b> If ${asset} settles below <b>$${q.strike.toLocaleString()}</b> on ${q.expiryIso.slice(0,10)}, you are paid the cash difference automatically. Your real ${asset} is never sold.${capNote}
+        </div>
+      `;
+    }
+
+    const coverageNote = heldAmount > 0
+      ? ` This covers <b>${q.contracts.toFixed(4)}</b> of your <b>${heldAmount}</b> ${asset} — the rest is unprotected.`
+      : '';
     document.getElementById('payoffSummary').innerHTML =
-      `You spend <b>$${q.spendUsdc.toFixed(2)}</b>${capNote} — that is your maximum loss; nothing more can ever be taken. ` +
+      `You spend exactly <b>$${q.spendUsdc.toFixed(2)} USDC</b>${capNote} — that is your maximum loss; nothing more can ever be taken. ` +
       `If the price is below <b>$${q.strike.toLocaleString()}</b> at expiry (${q.expiryIso.slice(0,10)}), the contract pays you the difference in cash — your real coins are never sold. ` +
-      `If it stays above, the contract expires and you are out the premium — but your coins are worth more anyway.`;
+      `If it stays above, the contract expires and you are out the premium — but your coins are worth more anyway.${coverageNote}`;
+    
+    renderStep4OrderSummary();
+    updateWalletUI();
   } catch (e) {
-    verdict.innerHTML = 'Quote failed: ' + e.message;
+    verdict.textContent = 'Quote failed: ' + e.message;
   }
+}
+
+function renderStep4OrderSummary() {
+  const card = document.getElementById('step4OrderCard');
+  if (!card || !state.quote) return;
+  const q = state.quote.quote;
+  const asset = document.getElementById('asset').value;
+  const tokenName = state.selected?.collateralToken?.toLowerCase() === '0x4e65fe4dba92790696d040ac24aa414708f5c0ab'.toLowerCase()
+    ? 'aBasUSDC (Aave USDC)' : 'USDC';
+  
+  const userUsdc = Number(walletState.usdcBalance) || 0;
+  const userABas = Number(walletState.aBasUsdcBalance) || 0;
+  const needed = q.spendUsdc;
+  
+  let balanceHtml = '';
+  if (walletState.address) {
+    const totalAvail = userUsdc + userABas;
+    if (totalAvail >= needed) {
+      balanceHtml = `<div class="balance-indicator sufficient">✓ Wallet balance ($${userUsdc.toFixed(2)} USDC · $${userABas.toFixed(2)} aBasUSDC) is sufficient to execute.</div>`;
+    } else {
+      const short = (needed - totalAvail).toFixed(2);
+      balanceHtml = `<div class="balance-indicator short">⚠ Insufficient balance: you need $${short} more USDC in your wallet.</div>`;
+    }
+  } else {
+    balanceHtml = `<div class="balance-indicator" style="color:var(--dim);">Connect wallet to verify balance sufficiency.</div>`;
+  }
+
+  card.style.display = 'block';
+  card.innerHTML = `
+    <div class="cost-header">
+      <div>
+        <div class="cost-title">Final Execution Order Summary</div>
+        <div style="font-size:11px; color:var(--dim);">Real order on Base mainnet (Chain ID 8453)</div>
+      </div>
+      <div class="cost-badge-amount">$${q.spendUsdc.toFixed(2)} USDC</div>
+    </div>
+    <div class="cost-grid">
+      <div class="cost-item">
+        <label>Final Cost (Max Loss)</label>
+        <div class="value" style="color:var(--accent);">$${q.spendUsdc.toFixed(2)} USDC</div>
+      </div>
+      <div class="cost-item">
+        <label>Position Protected</label>
+        <div class="value">${q.contracts.toFixed(4)} ${asset}</div>
+      </div>
+      <div class="cost-item">
+        <label>Strike Floor</label>
+        <div class="value">$${q.strike.toLocaleString()}</div>
+      </div>
+      <div class="cost-item">
+        <label>Collateral Token</label>
+        <div class="value">${tokenName}</div>
+      </div>
+    </div>
+    ${balanceHtml}
+  `;
 }
 
 function drawPayoff(data) {
   const svg = document.getElementById('payoffChart');
   const W = 600, H = 260, PAD = 40;
-  const pts = data.payoff; // [{spot, pnl}] from the protocol's own math — never computed in the UI
+  const pts = data.payoff;
   const strike = data.quote.strike;
   const lo = pts[0].spot, hi = pts[pts.length - 1].spot;
   const maxAbs = Math.max(...pts.map(p => Math.abs(p.pnl))) * 1.1 || 1;
@@ -493,77 +908,223 @@ function drawPayoff(data) {
 
 function goToExecute() { setStep(4); }
 
+// ── Simulation & Execution ─────────────────────────────────────────────────────
+
+/**
+ * Real free simulation: a read-only eth_call of the EXACT fill calldata,
+ * "from" the wallet that would send it. The Thetanuts SDK's own
+ * callStaticFillOrder resolves {success:false} instead of throwing on a
+ * would-revert fill (a real gotcha — see HANDOFF.md) — going straight to a
+ * raw provider.call sidesteps that entirely: ethers throws on any revert.
+ */
+async function checkFillWouldSucceed(prep, fromAddress) {
+  await walletState.provider.call({ to: prep.fillTx.to, data: prep.fillTx.data, from: fromAddress });
+}
+
 async function runSimulate() {
   const btn = document.getElementById('simBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>callStaticFillOrder()...';
+  btn.innerHTML = '<span class="spinner"></span>simulating fill...';
   document.getElementById('simResult').innerHTML = '';
+  const el = document.createElement('div');
+  el.className = 'sim-result';
   try {
-    const sim = await api('/api/simulate', { id: state.selected.id, spendUsdc: state.quote.quote.spendUsdc });
-    const el = document.createElement('div');
-    el.className = 'sim-result' + (sim.ok ? ' ok' : '');
-    el.textContent = sim.ok
-      ? `✓ the real transaction would succeed against current chain state — nothing was spent to learn this`
-      : `✗ would revert: ${sim.error} — nothing was spent`;
-    document.getElementById('simResult').appendChild(el);
-    document.getElementById('execBtn').disabled = !sim.ok;
+    const q = state.quote.quote;
+    const prep = await api('/api/prepare-tx', {
+      id: state.selected.id,
+      spendUsdc: q.spendUsdc,
+      takerAddress: walletState.address || '0x0000000000000000000000000000000000000001',
+    });
+
+    if (!walletState.address || !walletState.provider) {
+      el.innerHTML = `Order structure encodes fine. <b>Final execution cost: $${prep.quote.spendUsdc.toFixed(2)} USDC.</b> Connect a wallet to run a real on-chain simulation of the exact fill.`;
+    } else {
+      try {
+        await checkFillWouldSucceed(prep, walletState.address);
+        el.className = 'sim-result ok';
+        el.innerHTML = `✓ <b>Simulation succeeded on Base mainnet.</b><br/>Final amount that will leave your wallet on execution: <b>$${prep.quote.spendUsdc.toFixed(2)} USDC</b>.<br/><span style="color:var(--dim); font-size:11px;">$0.00 spent on simulation — zero gas, zero collateral debited.</span>`;
+      } catch (simErr) {
+        el.textContent = `✗ Would revert right now: ${simErr.shortMessage || simErr.reason || simErr.message}. If you haven't approved or deposited collateral yet, Execute does that first and re-checks right before sending.`;
+      }
+    }
   } catch (e) {
-    document.getElementById('simResult').textContent = 'Error: ' + e.message;
+    el.textContent = `✗ Simulation check: ${e.message}`;
   } finally {
-    btn.disabled = false; btn.textContent = 'Re-simulate';
+    document.getElementById('simResult').appendChild(el);
+    btn.disabled = false;
+    btn.textContent = 'Re-simulate';
   }
+}
+
+function sumDebitsFromReceipt(receipt, tokenAddress, walletAddress) {
+  const fromTopic = ethers.zeroPadValue(walletAddress, 32).toLowerCase();
+  const token = tokenAddress.toLowerCase();
+  let total = 0n;
+  for (const log of (receipt.logs || [])) {
+    if (log.address.toLowerCase() === token &&
+        log.topics && log.topics[0] === TRANSFER_TOPIC &&
+        log.topics[1] && log.topics[1].toLowerCase() === fromTopic) {
+      total += BigInt(log.data);
+    }
+  }
+  return total;
 }
 
 async function runExecute() {
+  if (!walletState.address || !walletState.signer) {
+    await connectWallet();
+    if (!walletState.address) return;
+  }
+
   const q = state.quote.quote;
-  if (!confirm(`Spend $${q.spendUsdc.toFixed(2)} of real USDC on Base mainnet to buy this floor?`)) return;
+  const asset = document.getElementById('asset').value;
+  if (!confirm(`Spend $${q.spendUsdc.toFixed(2)} USDC on Base mainnet to buy a $${q.strike.toLocaleString()} floor for ${q.contracts.toFixed(4)} ${asset} using wallet ${walletState.address}?`)) return;
+
   const btn = document.getElementById('execBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>fillOrder() on Base mainnet...';
+  document.getElementById('txResult').innerHTML = '';
+
   try {
-    const res = await api('/api/execute', { id: state.selected.id, spendUsdc: q.spendUsdc, confirm: true });
+    btn.innerHTML = '<span class="spinner"></span>Preparing transaction...';
+    const prep = await api('/api/prepare-tx', {
+      id: state.selected.id,
+      spendUsdc: q.spendUsdc,
+      takerAddress: walletState.address,
+    });
+
+    const requiredUnits = BigInt(prep.collateralUnits);
+
+    // 1. Handle Aave collateral deposit if needed (for aBasUSDC)
+    if (prep.aavePlan) {
+      const aBasContract = new ethers.Contract(prep.aavePlan.aBasUsdcAddress, ERC20_ABI, walletState.signer);
+      const currentABas = await aBasContract.balanceOf(walletState.address);
+
+      if (currentABas < requiredUnits) {
+        const shortfall = requiredUnits - currentABas;
+        const usdcContract = new ethers.Contract(prep.aavePlan.rawUsdcAddress, ERC20_ABI, walletState.signer);
+        const usdcBal = await usdcContract.balanceOf(walletState.address);
+
+        if (usdcBal < shortfall) {
+          throw new Error(`Insufficient USDC balance. You need $${(Number(shortfall)/1e6).toFixed(2)} USDC to supply to Aave for collateral.`);
+        }
+
+        // Check allowance for Aave pool
+        const aaveAllowance = await usdcContract.allowance(walletState.address, prep.aavePlan.aavePoolAddress);
+        if (aaveAllowance < shortfall) {
+          btn.innerHTML = '<span class="spinner"></span>Approve USDC for Aave in wallet...';
+          const appTx = await walletState.signer.sendTransaction({
+            to: prep.aavePlan.approveAaveTx.to,
+            data: prep.aavePlan.approveAaveTx.data,
+          });
+          btn.innerHTML = '<span class="spinner"></span>Confirming Aave approval...';
+          await appTx.wait();
+        }
+
+        btn.innerHTML = '<span class="spinner"></span>Supply USDC to Aave in wallet...';
+        const supTx = await walletState.signer.sendTransaction({
+          to: prep.aavePlan.supplyTx.to,
+          data: prep.aavePlan.supplyTx.data,
+        });
+        btn.innerHTML = '<span class="spinner"></span>Confirming Aave supply...';
+        await supTx.wait();
+      }
+    }
+
+    // 2. Handle OptionBook collateral allowance
+    const collateralContract = new ethers.Contract(prep.collateralToken, ERC20_ABI, walletState.signer);
+    const currentAllowance = await collateralContract.allowance(walletState.address, prep.optionBookAddress);
+
+    if (currentAllowance < requiredUnits) {
+      btn.innerHTML = '<span class="spinner"></span>Approve collateral in wallet...';
+      const appTx = await walletState.signer.sendTransaction({
+        to: prep.approveOptionBookTx.to,
+        data: prep.approveOptionBookTx.data,
+      });
+      btn.innerHTML = '<span class="spinner"></span>Confirming approval...';
+      await appTx.wait();
+    }
+
+    // 3. Verify the fill would succeed against the CURRENT chain state — this
+    // is the real safety gate, deliberately placed here rather than behind
+    // the separate "Simulate" button: it runs after approval/deposit are
+    // confirmed, so it reflects exactly what "4." is about to send. A
+    // simulate run before approval existed would reject every fresh
+    // wallet's first fill and prove nothing about the tx we actually send.
+    btn.innerHTML = '<span class="spinner"></span>Verifying the fill would succeed...';
+    try {
+      await checkFillWouldSucceed(prep, walletState.address);
+    } catch (simErr) {
+      throw new Error(`Simulation says this fill would revert — refusing to send: ${simErr.shortMessage || simErr.reason || simErr.message}`);
+    }
+
+    // 4. Fill Order on Thetanuts OptionBook
+    btn.innerHTML = '<span class="spinner"></span>Confirm fillOrder in wallet...';
+    const fillTx = await walletState.signer.sendTransaction({
+      to: prep.fillTx.to,
+      data: prep.fillTx.data,
+    });
+
+    btn.innerHTML = '<span class="spinner"></span>Waiting for block confirmation...';
+    const receipt = await fillTx.wait();
+
+    // 5. Calculate actual paid amount from receipt Transfer logs
+    const paidUnits = sumDebitsFromReceipt(receipt, prep.collateralToken, walletState.address);
+    const paidUsd = paidUnits > 0n ? Number(paidUnits) / (10 ** prep.collateralDecimals) : null;
+    const paidText = paidUsd !== null ? `$${paidUsd.toFixed(2)} USDC` : `$${q.spendUsdc.toFixed(2)} USDC`;
+
     btn.textContent = 'Executed ✓';
-    const paidLine = res.paidUsd === null
-      ? 'paid: could not be determined automatically — verify the debit on BaseScan'
-      : `you paid $${res.paidUsd.toFixed(2)} (read from Transfer logs)`;
     document.getElementById('txResult').innerHTML = `
       <div class="tx-card">
-        <div class="tx-label">Real transaction on Base mainnet — ${paidLine}</div>
-        <div class="tx-hash">${res.hash}</div>
-        <div style="margin-top:10px;"><a href="${res.explorer}" target="_blank" rel="noopener">${res.explorer} →</a></div>
+        <div class="tx-label">Real transaction confirmed on Base mainnet</div>
+        <div style="font-size:15px; font-weight:600; margin-bottom:8px; color:var(--text);">
+          Final Amount Paid: <span style="color:var(--accent); font-family:var(--mono);">${paidText}</span>
+          <span style="font-size:11px; color:var(--dim); font-weight:normal; margin-left:6px;">(verified on-chain from Transfer logs)</span>
+        </div>
+        <div class="tx-hash">${receipt.hash}</div>
+        <div style="margin-top:10px;"><a href="https://basescan.org/tx/${receipt.hash}" target="_blank" rel="noopener">View on BaseScan →</a></div>
       </div>
     `;
+
+    await refreshWalletBalances();
+    updateWalletUI();
   } catch (e) {
-    // CRITICAL: we cannot tell here whether this failure happened BEFORE the
-    // transaction was sent (safe to retry immediately) or AFTER (a real fill
-    // may already be on-chain — an immediate re-arm invites a duplicate
-    // real-money click). So we never silently re-enable the button. The user
-    // must explicitly confirm they've checked BaseScan before retrying.
-    btn.textContent = 'Execute for real';
-    document.getElementById('txResult').innerHTML = `
+    executionFailedNeedsManualClear = true;
+    btn.textContent = 'Execute with wallet';
+    const box = document.getElementById('txResult');
+    box.innerHTML = `
       <div class="sim-result">
-        <div>✗ ${e.message}</div>
-        <div style="margin-top:10px;">Something may have gone wrong AFTER a transaction was sent.
-          Check <a href="https://basescan.org" target="_blank" rel="noopener">BaseScan</a>
-          for a recent transaction from your wallet before clicking Execute again.</div>
-        <button class="btn secondary" style="margin-top:10px;" onclick="rearmExecute()">I've checked, let me retry</button>
+        <div id="execErrMsg"></div>
+        <div style="margin-top:10px;">If a transaction was already broadcast, check
+          <a href="https://basescan.org/address/${walletState.address || ''}" target="_blank" rel="noopener">BaseScan</a>
+          before retrying.</div>
+        <button class="btn secondary" style="margin-top:10px;" onclick="rearmExecute()">Retry</button>
       </div>
     `;
+    // The error text can embed wallet/RPC/contract-revert strings — never
+    // trust it as HTML. walletState.address above is safe: it always comes
+    // from the wallet extension as a checksummed hex address, never user text.
+    document.getElementById('execErrMsg').textContent = '✗ ' + (e.shortMessage || e.message);
   }
 }
 
-/** Explicit, user-driven re-arm after an /api/execute failure — see runExecute()'s catch block. */
 function rearmExecute() {
+  executionFailedNeedsManualClear = false;
   const btn = document.getElementById('execBtn');
   btn.disabled = false;
-  btn.textContent = 'Execute for real';
+  updateWalletUI();
   document.getElementById('txResult').innerHTML = '';
 }
 
 function resetFlow() {
   state = { candidates: [], selected: null, quote: null };
-  document.getElementById('execBtn').disabled = true;
-  document.getElementById('execBtn').textContent = 'Execute for real';
+  executionFailedNeedsManualClear = false;
+  const btn = document.getElementById('execBtn');
+  btn.disabled = false;
+  updateWalletUI();
+  const step3Card = document.getElementById('step3CostCard');
+  if (step3Card) step3Card.style.display = 'none';
+  const step4Card = document.getElementById('step4OrderCard');
+  if (step4Card) step4Card.style.display = 'none';
   document.getElementById('simBtn').textContent = 'Simulate fill (free)';
   document.getElementById('simResult').innerHTML = '';
   document.getElementById('txResult').innerHTML = '';

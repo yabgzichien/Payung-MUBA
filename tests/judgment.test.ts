@@ -6,7 +6,7 @@ function q(over: Partial<Quote> = {}): Quote {
   return {
     requestedUsdc: 10, spendUsdc: 10, capped: false,
     collateralUsdc: 10, numContracts: '1', maxContracts: '100',
-    pricePerContract: 19.94, premiumUsdc: 19.94,
+    pricePerContract: 19.94, premiumUsdc: 19.94, contracts: 1,
     strike: 2300, expiry: new Date('2026-09-10T08:00:00Z'),
     yourSide: 'you buy the option', preview: {},
     ...over,

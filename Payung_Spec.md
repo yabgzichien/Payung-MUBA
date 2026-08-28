@@ -10,6 +10,29 @@ Payung is an AI-assisted options protection product built on the Thetanuts SDK, 
 
 ---
 
+## Tech stack
+
+| Layer | Choice | Notes |
+|---|---|---|
+| Language | TypeScript (ESM) | `"type": "module"` in `package.json`; intra-project imports use the `.js` suffix per Node ESM convention. |
+| Runtime | Node.js 18+, run via `tsx` | No bundler, no build step — `.ts` files execute directly. |
+| Chain SDK | `@thetanuts-finance/thetanuts-client` `^0.3.0` | Sole dependency that talks to the Thetanuts protocol; imported only from `src/core.ts`. |
+| Chain interaction | `ethers` `^6.13.0` | Providers, wallets, contract calls, address/BigInt utilities. |
+| Chain | Base mainnet, chainId `8453` | No testnet — Track 02's bar explicitly disqualifies paper/testnet trading. |
+| Blockchain protocol | Thetanuts V4 (OptionBook) | Cash-settled options; `fetchOrders` / `previewFillOrder` / `callStaticFillOrder` / `fillOrder`. |
+| Collateral bridging | Aave V3 on Base | Mints `aBasUSDC` from raw USDC when a buyable put requires it (`src/aave.ts`). |
+| AI / LLM | Gonka Router (OpenAI-compatible chat completions) | Configurable model via `.env` (default `moonshotai/Kimi-K2.6`). Used only for NL→constraint parsing — never for pricing, payoff, or judgment. |
+| HTTP server | Node's built-in `node:http` | No framework — a handful of routes over the execution core (`src/server.ts`). |
+| Frontend | Vanilla HTML/CSS/JS, single file | No framework, no bundler (`web/index.html`); talks to the server via `fetch`. |
+| CLI | `tsx` + a manual `switch` on `process.argv` | No CLI framework; `src/cli.ts`, invoked via `npm run <script>`. |
+| Testing | Vitest | Pure-function unit tests with zero network access; live/chain behavior is verified separately via the CLI. |
+| Type checking | TypeScript, `tsc --noEmit` | No separate lint step. |
+| Env config | `dotenv` | `.env` (gitignored) holds `PRIVATE_KEY`, `BASE_RPC_URL`, `GONKA_API_KEY`, `GONKA_BASE_URL`, `GONKA_MODEL`. |
+
+Deliberately no database, no auth layer, no message queue, no CSS framework, no bundler — the product is a thin, auditable layer over a live on-chain orderbook, and the stack stays exactly that thin.
+
+---
+
 ## Flowchart
 
 ```mermaid
@@ -108,6 +131,11 @@ A: There's no choice involved because there's no selling at all — the put is a
 
 **Q: "the $4.62 is that a real figure price? What is that price? Will the price be higher than 4.62 until it does not make sense to buy it at all?"**
 A: Yes, real, pulled from the live Thetanuts orderbook on Base — though the first example mismatched a strike and its premium, corrected in the pricing table in [PROJECT.md](PROJECT.md). The price climbs the closer your floor is to the current market price, roughly 10x from a far-out floor to a near-the-money one, because a closer floor is more likely to actually pay out. There is a real ceiling: once the premium eats a large share of what you're protecting, you're better off not buying it — you'd be paying more for the insurance than the insurance is worth.
+
+**Q: "If the premium right now is $10 for 'I have 1 ETH. I need it to be worth at least $2,300 in 14 days', will the $10 premium become $20 if the ETH amount becomes 2 ETH?"**
+A: It depends on the protection goal:
+- **Protecting 2 ETH at $2,300 each (total $4,600 floor):** Yes, exactly $20. Option contracts scale linearly with underlying asset quantity ($2 \text{ ETH} \times \$10/\text{ETH} = \$20$).
+- **Protecting 2 ETH for a total portfolio floor of $2,300 ($1,150 per ETH):** No, it will be significantly cheaper (close to $0–$2 total). Because a $1,150 strike is much further out-of-the-money (OTM), the probability of dropping that low is minimal, so the premium drops sharply.
 
 ---
 

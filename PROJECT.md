@@ -188,6 +188,11 @@ A: There's no choice involved because there's no selling at all — the put is a
 **Q: "the $4.62 is that a real figure price? What is that price? Will the price be higher than 4.62 until it does not make sense to buy it at all?"**
 A: Yes, real, pulled from the live Thetanuts orderbook on Base — though the first example mismatched a strike and its premium, corrected in the pricing table above. The price climbs the closer your floor is to the current market price, roughly 10x from a far-out floor to a near-the-money one, because a closer floor is more likely to actually pay out. There is a real ceiling: once the premium eats a large share of what you're protecting, you're better off not buying it — you'd be paying more for the insurance than the insurance is worth.
 
+**Q: "If the premium right now is $10 for 'I have 1 ETH. I need it to be worth at least $2,300 in 14 days', will the $10 premium become $20 if the ETH amount becomes 2 ETH?"**
+A: It depends on the protection goal:
+- **Protecting 2 ETH at $2,300 each (total $4,600 floor):** Yes, exactly $20. Option contracts scale linearly with underlying asset quantity ($2 \text{ ETH} \times \$10/\text{ETH} = \$20$).
+- **Protecting 2 ETH for a total portfolio floor of $2,300 ($1,150 per ETH):** No, it will be significantly cheaper (close to $0–$2 total). Because a $1,150 strike is much further out-of-the-money (OTM), the probability of dropping that low is minimal, so the premium drops sharply.
+
 ---
 
 ## Status

@@ -10,9 +10,30 @@
 
 **Spec:** [docs/superpowers/specs/2026-08-28-ux-quantity-and-candlestick-design.md](../specs/2026-08-28-ux-quantity-and-candlestick-design.md)
 
+## Revision — 2026-08-28, post-audit
+
+This plan was audited against the repo, the SDK's type declarations, the live Chainlink feeds, and the live Coinbase API before execution. Its task decomposition and line-number citations held up; nine defects did not, and are fixed above. Recorded here because most of them **fail silently** — an agent executing the original text would have produced something that looked finished.
+
+| # | Defect | Fixed in |
+|---|---|---|
+| 1 | `granularityFor` requested more than Coinbase's 300-candle cap, returning HTTP 400 for `days=2` and `days=76-90` — both inside the horizon field's own 1-90 range. Confirmed against the live API. | Task 8 |
+| 2 | The payoff gutter mapped a `[strike*0.8, strike*1.2]` curve through a Y axis spanning only candles/strike/spot, putting its endpoints hundreds of pixels outside a 320-tall viewBox. | Task 9 |
+| 3 | The far-miss warning was written into `#candVerdict`, which `selectCandidate` overwrites milliseconds later — the flagship "'closest match' is a lie" fix would never have been visible. | Task 10 |
+| 4 | `Math.max(0, …)` scored every candidate at or above the implied strike as a 0% deviation, badging a strike far *above* the requested floor as a perfect match and suppressing the warning entirely. | Tasks 4, 10 |
+| 5 | Moving distance server-side made it stale on edit: the debounced re-render measured badges against the *previous* implied strike with no indication. | Task 10 |
+| 6 | Importing `impliedStrike` from `core.ts` into `intent.ts` would have made it a **value** import, pulling `dotenv` and the Thetanuts SDK into the zero-network intent tests and breaking `HANDOFF.md` design rule 1. | Task 1 (new `src/spec.ts`), Task 3 |
+| 7 | `src/spot.ts` imported `@thetanuts-finance/thetanuts-client`, contradicting both this plan's own Global Constraints and the module's own docstring. | Tasks 7, 8 |
+| 8 | Task 5 asserted no `floorUsd` reference remained in `README.md`. [README.md:33](../../../README.md#L33) documents the old spec shape, as does the comment at `src/server.ts:154`. | Task 5 |
+| 9 | `fetchSpot` had no retry and the route swallowed failures to `spot: null` with a server-side log only — the public Base RPC rate-limits these reads under light load (observed directly). | Tasks 8, 9 |
+
+Smaller corrections folded in: `impliedStrike` hoisted out of the sort comparator; `(client as any).provider` dropped (the field is public and typed); SVG presentation attributes kept as hex literals rather than `var()`, matching the existing `drawPayoff`; a render token added so overlapping history fetches can't paint a stale chart; `api2` renamed `apiGet`; the `floorTotalUsd` bound widening documented as deliberate; the client-side `impliedStrike` duplication in `restateSentence()` recorded as an explicit, bounded exception to the no-presentation-math constraint rather than justified only in a code comment; and Task 10's far-miss verification case corrected (0.32 ETH / $798 implies a floor *close* to spot post-fix — it is the regression case, not a far-miss case).
+
+Also worth knowing: the design doc's §3.4 lists `tests/fixtures.ts` as needing an update. It contains no spec literal and needs none — the doc is wrong there, the plan is right.
+
 ## Global Constraints
 
-- `src/core.ts` remains the only module that touches the Thetanuts SDK — `src/spot.ts` must never import `@thetanuts-finance/thetanuts-client`.
+- `src/core.ts` remains the only module that touches the Thetanuts SDK — `src/spot.ts` must never import `@thetanuts-finance/thetanuts-client` **in any form, not even `import type`**. It takes a feed address and an `ethers.Provider` as plain arguments instead, which also makes it unit-testable.
+- `src/spec.ts` (new, Task 1) holds `ProtectionSpec` + `impliedStrike` and has **zero imports**. This exists so `src/intent.ts` can call `impliedStrike` at runtime without taking a value dependency on `core.ts`: `HANDOFF.md`'s design rule 1 requires `intent.ts`/`judgment.ts` to import only *types* from `core`, and a value import would drag `dotenv/config` and the whole Thetanuts SDK into the zero-network intent tests.
 - The LLM (`src/intent.ts`) never produces a number the user sees — it only ever transcribes stated fields; no field it emits may be computed by the model (no dividing/multiplying).
 - No fabricated numbers, anywhere — every price/premium/payoff/spot/candle figure traces to a live SDK call, a live Chainlink read, a live Coinbase read, or an empirical receipt read.
 - Approve exact amounts, never `MaxUint256` (unaffected by this plan, but no task may weaken it).
@@ -26,20 +47,23 @@
 ## Task 1: `ProtectionSpec` gains `quantity`, and `impliedStrike` becomes the single source of truth for the per-unit number
 
 **Files:**
-- Modify: `src/core.ts:136-143` (the `ProtectionSpec` type), and add `impliedStrike` near it
+- Create: `src/spec.ts` — the `ProtectionSpec` type + `impliedStrike`, with zero imports
+- Modify: `src/core.ts:136-143` — delete the local `ProtectionSpec` type; import from `./spec.js` and re-export both names
 - Test: `tests/implied-strike.test.ts` (new)
 
 **Interfaces:**
-- Produces: `ProtectionSpec = { asset: 'ETH' | 'BTC'; quantity: number; floorTotalUsd: number; horizonDays: number }` (replaces the old `{asset, floorUsd, horizonDays}` shape)
+- Produces: `ProtectionSpec = { asset: 'ETH' | 'BTC'; quantity: number; floorTotalUsd: number; horizonDays: number }` (replaces the old `{asset, floorUsd, horizonDays}` shape) — defined in `src/spec.ts`, re-exported from `src/core.ts` so every existing `from './core.js'` import keeps working unchanged
 - Produces: `impliedStrike(spec: ProtectionSpec): number` — pure, `spec.floorTotalUsd / spec.quantity`
+
+**Why a separate module rather than putting this in `core.ts`:** Task 3 needs `impliedStrike` **at runtime** inside `src/intent.ts` (the implied-strike plausibility check). `intent.ts` currently imports only types from `core.ts` — `HANDOFF.md` design rule 1 mandates that — and switching to a value import would pull `dotenv/config` plus `@thetanuts-finance/thetanuts-client` into `intent.ts` and into the zero-network intent tests. A dependency-free `src/spec.ts` gives every consumer one definition of the division without that coupling. `tsconfig.json` sets neither `isolatedModules` nor `verbatimModuleSyntax`, so the plain re-export below compiles as written.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/implied-strike.test.ts`:
+Create `tests/implied-strike.test.ts`. Note it imports from `../src/spec.js`, not `../src/core.js` — this test must stay free of the SDK:
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { impliedStrike, type ProtectionSpec } from '../src/core.js';
+import { impliedStrike, type ProtectionSpec } from '../src/spec.js';
 
 describe('impliedStrike', () => {
   it('divides total floor by quantity to get a per-unit strike', () => {
@@ -62,9 +86,46 @@ describe('impliedStrike', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run tests/implied-strike.test.ts`
-Expected: FAIL — `impliedStrike` is not exported from `src/core.ts`, and `ProtectionSpec` still requires `floorUsd` not `quantity`/`floorTotalUsd` (TypeScript compile error surfaces as a test failure under vitest's esbuild transform).
+Expected: FAIL — `src/spec.ts` does not exist yet, so the import cannot resolve.
 
-- [ ] **Step 3: Update `ProtectionSpec` and add `impliedStrike`**
+- [ ] **Step 3a: Create `src/spec.ts`**
+
+```ts
+/**
+ * The user's stated constraint, and the one derivation over it.
+ *
+ * This module deliberately has ZERO imports. `src/intent.ts` calls
+ * `impliedStrike` at runtime, and HANDOFF.md's design rule 1 requires
+ * intent.ts/judgment.ts to import only *types* from core.ts — putting this
+ * in core.ts would force a value import that drags dotenv and the whole
+ * Thetanuts SDK into the zero-network intent tests.
+ */
+
+export type ProtectionSpec = {
+  /** 'ETH' | 'BTC' — what the user holds. */
+  asset: 'ETH' | 'BTC';
+  /** How much of the asset the user holds. */
+  quantity: number;
+  /** Total USD value the whole holding must be worth at the deadline. */
+  floorTotalUsd: number;
+  /** How long they need protection, in days. */
+  horizonDays: number;
+};
+
+/**
+ * The per-unit strike a total-value floor implies. This is the ONLY place
+ * this division happens — filterCandidates, validateSpec, the CLI, and the
+ * server all read this instead of recomputing it, so the per-unit and total
+ * readings of a floor can never drift apart (see the design doc's Section 1a
+ * regression: "$798 for 0.32 ETH" was previously matched as a $798 strike
+ * instead of the correct $2,493.75).
+ */
+export function impliedStrike(spec: ProtectionSpec): number {
+  return spec.floorTotalUsd / spec.quantity;
+}
+```
+
+- [ ] **Step 3b: Re-point `src/core.ts` at it**
 
 In `src/core.ts`, replace lines 136-143:
 
@@ -79,31 +140,20 @@ export type ProtectionSpec = {
 };
 ```
 
-with:
+with a re-export, so every existing `import { ..., type ProtectionSpec } from './core.js'` across `server.ts`, `cli.ts`, and the tests keeps resolving without edits:
 
 ```ts
-export type ProtectionSpec = {
-  /** 'ETH' | 'BTC' — what the user holds. */
-  asset: 'ETH' | 'BTC';
-  /** How much of the asset the user holds. */
-  quantity: number;
-  /** Total USD value the whole holding must be worth at the deadline. */
-  floorTotalUsd: number;
-  /** How long they need protection, in days. */
-  horizonDays: number;
-};
-
-/**
- * The per-unit strike a total-value floor implies. This is the ONLY place
- * this division happens — filterCandidates, the CLI, and the UI all read
- * this instead of recomputing it, so the per-unit and total readings of a
- * floor can never drift apart (see the design doc's Section 1a regression:
- * "$798 for 0.32 ETH" was previously matched as a $798 strike).
- */
-export function impliedStrike(spec: ProtectionSpec): number {
-  return spec.floorTotalUsd / spec.quantity;
-}
+export type { ProtectionSpec } from './spec.js';
+export { impliedStrike } from './spec.js';
 ```
+
+and add `ProtectionSpec`/`impliedStrike` to core's own imports at the top of the file (core.ts uses `ProtectionSpec` in `filterCandidates`, `coverageGapDays`, and `findCandidates`, and will use `impliedStrike` in Task 2):
+
+```ts
+import { impliedStrike, type ProtectionSpec } from './spec.js';
+```
+
+Note: a re-export of a name you also import locally is fine here — `tsconfig.json` sets neither `isolatedModules` nor `verbatimModuleSyntax`. If `tsc` objects, collapse to `export { impliedStrike };` / `export type { ProtectionSpec };` after the import instead.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -113,8 +163,8 @@ Expected: PASS (3 tests). Note: `src/core.ts` will not fully type-check yet — 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/core.ts tests/implied-strike.test.ts
-git commit -m "feat: quantity-aware ProtectionSpec with derived impliedStrike"
+git add src/spec.ts src/core.ts tests/implied-strike.test.ts
+git commit -m "feat: quantity-aware ProtectionSpec with derived impliedStrike in a dependency-free src/spec.ts"
 ```
 
 ---
@@ -166,7 +216,14 @@ Expected: FAIL — `filterCandidates` still sorts by `spec.floorUsd`, which is n
 
 - [ ] **Step 3: Update `filterCandidates` to rank by `impliedStrike`**
 
-In `src/core.ts`, inside `filterCandidates` (around line 181), replace:
+In `src/core.ts`, inside `filterCandidates`, hoist the derivation above the chain — a comparator runs O(n log n) times and there is no reason to redo the division on every comparison. Insert immediately after the function's opening brace, before `return (`:
+
+```ts
+  // Derived once: the per-unit strike this spec's total value + quantity imply.
+  const target = impliedStrike(spec);
+```
+
+then replace (around line 181):
 
 ```ts
       // Prefer strikes near the requested floor.
@@ -177,8 +234,10 @@ with:
 
 ```ts
       // Prefer strikes near the per-unit floor implied by the total value + quantity.
-      .sort((a, b) => Math.abs(a.strike - impliedStrike(spec)) - Math.abs(b.strike - impliedStrike(spec)))
+      .sort((a, b) => Math.abs(a.strike - target) - Math.abs(b.strike - target))
 ```
+
+`impliedStrike` is already in scope from the `./spec.js` import added in Task 1 Step 3b.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -206,8 +265,10 @@ git commit -m "feat: filterCandidates ranks by impliedStrike instead of a raw pe
 - Modify: `tests/intent.test.ts`
 
 **Interfaces:**
-- Consumes: `impliedStrike` from `src/core.ts` (Task 1)
+- Consumes: `impliedStrike` + `ProtectionSpec` from **`src/spec.js`** (Task 1) — NOT from `core.js`. This is the whole reason `src/spec.ts` exists; importing the value from `core.js` here would pull `dotenv/config` and the Thetanuts SDK into this module and into `tests/intent.test.ts`, breaking `HANDOFF.md` design rule 1.
 - Produces: `validateSpec(obj): ProtectionSpec` now requires `quantity` and `floorTotalUsd`; throws if `quantity` is missing/non-positive or if `impliedStrike(spec)` falls outside `[1, 10_000_000]`
+
+**Deliberate bound change (not a typo):** `floorTotalUsd`'s upper bound widens from the old `floorUsd`'s `10_000_000` to `10_000_000_000`. A *total* holding value can legitimately exceed any plausible *per-unit* price, so reusing the per-unit ceiling would reject real inputs. The per-unit sanity check has not been loosened — it moves to the `impliedStrike` range check below, which still enforces `[1, 10_000_000]`. That is where implausible inputs are now caught.
 
 - [ ] **Step 1: Update the failing tests first**
 
@@ -410,7 +471,7 @@ export function validateSpec(obj: any): ProtectionSpec {
 }
 ```
 
-And add `impliedStrike` to the import at the top of `src/intent.ts` — replace line 8:
+And repoint the import at the top of `src/intent.ts` — replace line 8:
 
 ```ts
 import type { ProtectionSpec } from './core.js';
@@ -419,8 +480,13 @@ import type { ProtectionSpec } from './core.js';
 with:
 
 ```ts
-import { impliedStrike, type ProtectionSpec } from './core.js';
+// From './spec.js', NOT './core.js' — impliedStrike is used at runtime here,
+// and a value import of core.ts would pull dotenv + the Thetanuts SDK into
+// this module and into the zero-network intent tests (HANDOFF.md rule 1).
+import { impliedStrike, type ProtectionSpec } from './spec.js';
 ```
+
+Verify this held: `npx vitest run tests/intent.test.ts` should still run without a `.env` present and without any network access.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -448,8 +514,10 @@ git commit -m "feat: intent.ts transcribes quantity + total floor instead of gue
 - Modify: `tests/wire.test.ts`
 
 **Interfaces:**
-- Consumes: `impliedStrike` from `src/core.ts` (Task 1)
-- Produces: `toWire(c, spec)` response now includes `impliedStrike: number` and `pctBelowImpliedStrike: number` (how far the candidate's own strike sits below the spec's implied strike, as a percentage — `0` if the candidate strike is at or above the implied strike). This is what Task 11 (correctness tier: "closest match" threshold) and the chart (Task 9) read instead of recomputing.
+- Consumes: `impliedStrike` from `src/core.ts` (re-exported from `src/spec.ts`, Task 1)
+- Produces: `toWire(c, spec)` response now includes `impliedStrike: number`, `pctVsImpliedStrike: number` (**signed** — positive means the candidate's strike sits *below* the user's implied strike, i.e. a weaker floor; negative means above, i.e. a stronger but pricier one), and `pctFromImpliedStrike: number` (the **absolute** distance). Task 10 gates the "closest match" badge on the absolute figure and labels with the signed one.
+
+**Why two numbers and not one clamped one:** an earlier draft used `Math.max(0, ((implied - c.strike) / implied) * 100)`, which scores *every* candidate at or above the implied strike as `0` — i.e. "perfect match". But `filterCandidates` ranks by **absolute** distance, so when the live book's nearest strikes all sit above the user's floor, `list[0]` can be far above it and would still earn a green "closest match" badge while the far-miss warning never fires. A strike 30% above the requested floor is a genuine mismatch (it costs far more than asked for), not a perfect one.
 
 - [ ] **Step 1: Update the failing test first**
 
@@ -472,14 +540,22 @@ Append a new test inside `describe('wire format', ...)`:
     const twoEthSpec = { asset: 'ETH' as const, quantity: 2, floorTotalUsd: 4600, horizonDays: 14 };
     const w = toWire(makeCandidate({ strike: 2200 }), twoEthSpec);
     expect(w.impliedStrike).toBe(2300); // 4600 / 2
-    expect(w.pctBelowImpliedStrike).toBeCloseTo(((2300 - 2200) / 2300) * 100, 5);
+    expect(w.pctVsImpliedStrike).toBeCloseTo(((2300 - 2200) / 2300) * 100, 5);
+    expect(w.pctFromImpliedStrike).toBeCloseTo(((2300 - 2200) / 2300) * 100, 5);
+  });
+
+  it('reports a strike ABOVE the implied one as a real distance, not a perfect match', () => {
+    const spec1 = { asset: 'ETH' as const, quantity: 1, floorTotalUsd: 2300, horizonDays: 14 };
+    const w = toWire(makeCandidate({ strike: 2990 }), spec1); // 30% above the floor
+    expect(w.pctVsImpliedStrike).toBeCloseTo(-30, 5); // negative = above
+    expect(w.pctFromImpliedStrike).toBeCloseTo(30, 5); // absolute distance gates the badge
   });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run tests/wire.test.ts`
-Expected: FAIL — `toWire`'s return type has no `impliedStrike`/`pctBelowImpliedStrike` fields, and the file won't typecheck against the new `ProtectionSpec` shape.
+Expected: FAIL — `toWire`'s return type has no `impliedStrike`/`pctVsImpliedStrike`/`pctFromImpliedStrike` fields, and the file won't typecheck against the new `ProtectionSpec` shape.
 
 - [ ] **Step 3: Update `toWire`**
 
@@ -504,7 +580,8 @@ with:
 
 ```ts
 export function toWire(c: Candidate, spec: ProtectionSpec) {
-  const strike = impliedStrike(spec);
+  const target = impliedStrike(spec);
+  const pctVs = ((target - c.strike) / target) * 100;
   return {
     id: candidateId(c),
     strike: c.strike,
@@ -515,12 +592,22 @@ export function toWire(c: Candidate, spec: ProtectionSpec) {
     coverageGapDays: coverageGapDays(c, spec),
     makerBudget: c.makerBudget,
     /** The per-unit strike the user's stated quantity + total floor implies — what this candidate is being ranked against. */
-    impliedStrike: strike,
-    /** How far below the user's implied strike this candidate's own strike sits, as a percentage. 0 if at/above. */
-    pctBelowImpliedStrike: Math.max(0, ((strike - c.strike) / strike) * 100),
+    impliedStrike: target,
+    /** Signed: positive = this strike is BELOW the user's floor (weaker protection); negative = above it (stronger, but pricier). For display. */
+    pctVsImpliedStrike: pctVs,
+    /**
+     * Absolute distance from the user's implied strike. This — not the signed
+     * value — gates the "closest match" badge. filterCandidates ranks by
+     * absolute distance, so when the book's nearest strikes all sit ABOVE the
+     * requested floor, list[0] can be far above it; clamping negatives to 0
+     * would badge that as a perfect match and suppress the far-miss warning.
+     */
+    pctFromImpliedStrike: Math.abs(pctVs),
   };
 }
 ```
+
+Naming note: the local is `target`, not `strike` — `strike:` in the returned object is the *candidate's* strike, and shadowing that name with the user's implied strike is exactly the per-unit-vs-total confusion this whole plan exists to remove.
 
 Add `impliedStrike` to the import from `./core.js` at the top of `src/server.ts` (currently line 14-18) — add it to the existing named-import list alongside `findCandidates, quote, simulate, ...`.
 
@@ -760,7 +847,27 @@ Expected: prints "Candidates for 0.32 ETH needing $798.00 total (implied strike 
 
 - [ ] **Step 8: Update README.md and docs/demo-runbook.md example invocations**
 
-In `README.md`, the `npm run ask --` example at line 45 needs no change (it's natural language, unaffected). No other `floorUsd`/CLI-arg examples exist in `README.md` per the earlier grep — skip if none found on re-check.
+In `README.md`, the `npm run ask --` example at line 45 needs no change (it's natural language, unaffected). But **`README.md:33` does document the old spec shape** and must be updated — it is the README's single load-bearing sentence about the AI's contract. Replace:
+
+```
+The LLM (Gonka Router — a MUBA sponsor) does exactly one job: parse a sentence into
+`{asset, floorUsd, horizonDays}`, strictly validated. It never generates a price, a
+prediction, or any number the user sees.
+```
+
+with:
+
+```
+The LLM (Gonka Router — a MUBA sponsor) does exactly one job: transcribe a sentence into
+`{asset, quantity, floorTotalUsd, horizonDays}`, strictly validated. It is explicitly
+forbidden from dividing or multiplying — the per-unit strike a match is ranked against is
+derived in tested code (`impliedStrike`), never by the model. It never generates a price, a
+prediction, or any number the user sees.
+```
+
+Also update the stale schema comment at `src/server.ts:154`, which still reads `{asset, floorUsd, horizonDays}`, to the four-field shape. (Comment only — no behavior change — but leaving it contradicts the code directly above it.)
+
+Then re-run `grep -rn "floorUsd" src/ tests/ web/ README.md docs/` and confirm **zero** hits remain. At the time this plan was written the full set was: `src/core.ts` (Task 1–2), `src/intent.ts` + `tests/intent.test.ts` (Task 3), `tests/filter.test.ts` (Task 2), `tests/wire.test.ts` + `tests/coverage.test.ts` (Task 4), `src/cli.ts` (Task 5), `web/index.html` (Task 6), and `README.md:33` + `src/server.ts:154` (this step). `tests/fixtures.ts` contains no spec literal and needs no change, despite the design doc's §3.4 listing it.
 
 In `docs/demo-runbook.md`, replace line 11-12:
 
@@ -791,7 +898,7 @@ with:
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/cli.ts README.md docs/demo-runbook.md
+git add src/cli.ts src/server.ts README.md docs/demo-runbook.md
 git commit -m "feat!: CLI quote/simulate/execute/preflight take quantity + total floor
 
 BREAKING CHANGE: quote/simulate/execute args are now
@@ -813,6 +920,8 @@ derived (floorTotalUsd / quantity), never a separate argument."
 - Produces: `currentSpec()` returns `{asset, quantity, floorTotalUsd, horizonDays}`
 
 - [ ] **Step 1: Update `restateSentence()` to show the derived per-unit strike**
+
+**Stated exception to Global Constraint "presentation layers never compute a number":** this step knowingly duplicates the `impliedStrike` division in client JS. It is allowed here and *only* here, because `restateSentence()` runs on every keystroke before any server round-trip exists to ask, and its output is read-only prose. Two hard limits: (a) the duplicated value must never be fed back into a request, a filter, or a decision — the number that gates matching always comes from the server; and (b) once `toWire`'s `impliedStrike` is available (after "Find real offers"), any per-unit figure shown alongside candidates or the quote must come from the wire, not from this function. Recording it here rather than only in a code comment because a silent divergence between these two readings of the floor is the exact bug class this plan exists to eliminate.
 
 Replace (around line 644-651):
 
@@ -1015,7 +1124,14 @@ Expected: FAIL — `src/spot.ts` doesn't exist yet.
  * Price history + spot for the UI's chart. Deliberately separate from
  * core.ts — a price oracle is not a Thetanuts concern (design rule: core.ts
  * is the only module that touches the Thetanuts SDK; this module must never
- * import it).
+ * import it, not even as a type).
+ *
+ * Consequence for the API below: fetchSpot() takes a feed address and an
+ * ethers.Provider as plain arguments rather than a ThetanutsClient. The
+ * caller (server.ts) already holds a client and reads client.provider and
+ * client.chainConfig.priceFeeds[asset] off it — both are public, typed
+ * fields. Keeping those two values as parameters is what lets this module
+ * stay SDK-free and independently testable.
  */
 
 export type Candle = { t: number; o: number; h: number; l: number; c: number };
@@ -1061,26 +1177,48 @@ git commit -m "feat: pure Coinbase candle normalization (src/spot.ts)"
 - Modify: `src/server.ts` (new `/api/history` route + in-memory cache)
 
 **Interfaces:**
-- Consumes: `toCandles` from Task 7; `Candidate['priceFeed']` / `client.chainConfig.priceFeeds[asset]` pattern already used in `core.ts:264`
+- Consumes: `toCandles` from Task 7. The caller reads `client.provider` and `client.chainConfig.priceFeeds[asset]` (both public, typed fields on `ThetanutsClient`) and passes them in — this module never imports the SDK.
 - Produces: `fetchHistory(asset: 'ETH' | 'BTC', days: number): Promise<Candle[]>`
-- Produces: `fetchSpot(asset: 'ETH' | 'BTC', client: ThetanutsClient): Promise<{price: number; updatedAt: string; feed: string}>`
+- Produces: `fetchSpot(feed: string, provider: ethers.Provider): Promise<{price: number; updatedAt: string; feed: string}>`
+- Produces: `granularityFor(days: number): number` — exported for unit testing (see Step 1b)
 - Produces: `GET /api/history?asset=ETH&days=N` → `{candles: Candle[], spot: {price, updatedAt, feed, source: 'chainlink'} | null, historySource: 'coinbase-exchange' | null}`
+
+**Verified against the live chain before this plan was finalized** (so don't re-litigate it, but do re-check if the SDK version changes): `chainConfig.priceFeeds.ETH` = `0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70` and `.BTC` = `0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F`. Both answer `latestRoundData()` and `decimals()` (8), and ETH's `description()` returns `"ETH / USD"`. They are genuine Chainlink AggregatorV3 proxies, so the "the spot marker is the settlement price" claim is real, not assumed. Note `priceFeeds` also contains SOL/DOGE/XRP/BNB/PAXG/AVAX entries — irrelevant here, since `validateSpec` only admits ETH and BTC.
 
 - [ ] **Step 1: Add `fetchHistory` and `fetchSpot` to `src/spot.ts`**
 
-Append to `src/spot.ts` (after `toCandles`):
+Add the `ethers` import **at the top of the file**, above the `Candle` type — not appended after `toCandles`. (ESM hoists imports so either position runs, but imports buried mid-file are a readability trap.) There is deliberately **no** `@thetanuts-finance/thetanuts-client` import, not even `import type`:
 
 ```ts
 import { ethers } from 'ethers';
-import type { ThetanutsClient } from '@thetanuts-finance/thetanuts-client';
+```
 
+Then append the rest after `toCandles`:
+
+```ts
 const COINBASE_PRODUCT: Record<'ETH' | 'BTC', string> = { ETH: 'ETH-USD', BTC: 'BTC-USD' };
 
-/** Coinbase Exchange granularity in seconds, closest fit to "N days of history in <=300 candles". */
-function granularityFor(days: number): number {
-  if (days <= 2) return 300;    // 5m candles
-  if (days <= 10) return 3600;  // 1h candles
-  return 21600;                 // 6h candles
+/** Granularities Coinbase Exchange accepts, in seconds. Anything else is a 400. */
+const COINBASE_GRANULARITIES = [60, 300, 900, 3600, 21600, 86400];
+
+/** Coinbase caps ONE request at 300 candles, regardless of granularity. */
+const COINBASE_MAX_CANDLES = 300;
+
+/**
+ * Smallest accepted granularity that keeps `days` of history under Coinbase's
+ * 300-candle-per-request cap.
+ *
+ * GOTCHA (confirmed against the live API, not inferred): exceeding the cap is
+ * a hard `400 {"message":"granularity too small for the requested time range.
+ * Count of aggregations requested exceeds 300"}`, not a truncated response. A
+ * fixed if/else ladder gets this wrong at both ends of the 1-90 day range the
+ * horizon field allows — 2 days at 5m granularity is 576 candles (400), and
+ * 90 days at 6h is 360 candles (400). Deriving the granularity from the cap
+ * is the only version that holds across the whole range.
+ */
+export function granularityFor(days: number): number {
+  const minSecondsPerCandle = (days * 86400) / COINBASE_MAX_CANDLES;
+  return COINBASE_GRANULARITIES.find((g) => g >= minSecondsPerCandle) ?? 86400;
 }
 
 /**
@@ -1109,27 +1247,83 @@ const AGGREGATOR_V3_ABI = [
 
 /**
  * Live spot from the SAME Chainlink feed a candidate's option actually
- * settles against (client.chainConfig.priceFeeds[asset] — the identical
- * feed findCandidates() matches candidates on in core.ts). This is
+ * settles against — the caller passes chainConfig.priceFeeds[asset], the
+ * identical feed findCandidates() matches candidates on in core.ts. This is
  * deliberate: the spot marker on the chart must be the settlement price,
  * not a different exchange's idea of "current price".
+ *
+ * Takes (feed, provider) rather than a ThetanutsClient so this module stays
+ * SDK-free (design rule 1) and testable against a stub provider.
+ *
+ * Retries once: the public Base RPC (mainnet.base.org) rate-limits under
+ * light load and returns "missing revert data" for a call that succeeded
+ * moments earlier — observed directly while verifying these feeds. A single
+ * cheap retry turns the common transient into a non-event; a persistent
+ * failure still surfaces to the caller, which degrades to spot-unavailable
+ * rather than inventing a price.
  */
 export async function fetchSpot(
-  asset: 'ETH' | 'BTC',
-  client: ThetanutsClient
+  feed: string,
+  provider: ethers.Provider
 ): Promise<{ price: number; updatedAt: string; feed: string }> {
-  const feed = client.chainConfig.priceFeeds[asset];
-  if (!feed) throw new Error(`No price feed configured for ${asset}`);
-  const provider = (client as any).provider;
+  if (!feed) throw new Error('No price feed address supplied');
   const aggregator = new ethers.Contract(feed, AGGREGATOR_V3_ABI, provider);
-  const [decimals, round] = await Promise.all([
-    aggregator.decimals(),
-    aggregator.latestRoundData(),
-  ]);
-  const price = Number(round.answer) / 10 ** Number(decimals);
-  const updatedAt = new Date(Number(round.updatedAt) * 1000).toISOString();
-  return { price, updatedAt, feed: feed.toLowerCase() };
+  const read = async () => {
+    const [decimals, round] = await Promise.all([
+      aggregator.decimals(),
+      aggregator.latestRoundData(),
+    ]);
+    const price = Number(round.answer) / 10 ** Number(decimals);
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error(`Feed ${feed} returned an unusable answer: ${round.answer}`);
+    }
+    return {
+      price,
+      updatedAt: new Date(Number(round.updatedAt) * 1000).toISOString(),
+      feed: feed.toLowerCase(),
+    };
+  };
+  try {
+    return await read();
+  } catch {
+    return await read(); // one retry — see the rate-limiting note above
+  }
 }
+```
+
+- [ ] **Step 1b: Unit-test `granularityFor` (pure — add to `tests/spot.test.ts`)**
+
+This is the function that was wrong; it must not regress silently. Append to the file created in Task 7:
+
+```ts
+import { granularityFor } from '../src/spot.js';
+
+describe('granularityFor', () => {
+  // The horizon field allows 1-90 days, and the /api/history route clamps to
+  // that same range, so every value in it must stay under Coinbase's cap.
+  it('keeps every day-count in the allowed 1-90 range under 300 candles', () => {
+    for (let days = 1; days <= 90; days++) {
+      const g = granularityFor(days);
+      expect((days * 86400) / g).toBeLessThanOrEqual(300);
+    }
+  });
+
+  it('only ever returns a granularity Coinbase accepts', () => {
+    const allowed = [60, 300, 900, 3600, 21600, 86400];
+    for (let days = 1; days <= 90; days++) {
+      expect(allowed).toContain(granularityFor(days));
+    }
+  });
+
+  // Regression guards for the two values a fixed if/else ladder got wrong.
+  it('does not return 5m candles for a 2-day window (576 candles = HTTP 400)', () => {
+    expect(granularityFor(2)).toBeGreaterThan(300);
+  });
+
+  it('does not return 6h candles for a 90-day window (360 candles = HTTP 400)', () => {
+    expect(granularityFor(90)).toBeGreaterThan(21600);
+  });
+});
 ```
 
 - [ ] **Step 2: Add the `/api/history` route to `src/server.ts`**
@@ -1166,27 +1360,45 @@ Add the route inside `route(req, res)`, after the existing `GET`-adjacent routes
 
     const client = readClient();
     let spot: { price: number; updatedAt: string; feed: string } | null = null;
+    let spotError: string | null = null;
     try {
-      spot = await fetchSpot(asset, client);
+      const feed = client.chainConfig.priceFeeds[asset];
+      if (!feed) throw new Error(`No price feed configured for ${asset}`);
+      // client.provider and client.chainConfig are public typed fields on
+      // ThetanutsClient — no cast needed. Reading them here (rather than
+      // inside spot.ts) is what keeps spot.ts free of the SDK.
+      spot = await fetchSpot(feed, client.provider);
     } catch (e: any) {
-      console.error('fetchSpot failed:', e?.message || e);
+      spotError = e?.shortMessage || e?.message || String(e);
+      console.error('fetchSpot failed:', spotError);
     }
 
     let candles: Awaited<ReturnType<typeof fetchHistory>> = [];
     let historySource: 'coinbase-exchange' | null = null;
+    let historyError: string | null = null;
     try {
       candles = await fetchHistory(asset, days);
       historySource = 'coinbase-exchange';
     } catch (e: any) {
-      console.error('fetchHistory failed:', e?.message || e);
+      historyError = e?.message || String(e);
+      console.error('fetchHistory failed:', historyError);
     }
 
     const body = {
       candles,
       spot: spot ? { ...spot, source: 'chainlink' as const } : null,
       historySource,
+      // Surfaced, not just logged: a chart that silently drops its headline
+      // number looks identical to one that never had it. The UI shows these
+      // (Task 9) so a degraded chart is legibly degraded, never mistaken for
+      // complete. Never a fabricated fallback price.
+      spotError,
+      historyError,
     };
-    historyCache.set(key, { body, fetchedAt: Date.now() });
+    // Only cache a fully-successful response. Caching a degraded one pins the
+    // failure for 60s — on a flaky RPC that turns one transient into a minute
+    // of missing spot, which is exactly the wrong behavior mid-demo.
+    if (spot && historySource) historyCache.set(key, { body, fetchedAt: Date.now() });
     return send(res, 200, body);
   }
 
@@ -1197,16 +1409,34 @@ Note this route is deliberately placed before the `req.method === 'GET'` static-
 - [ ] **Step 3: Manual verification (network route — no vitest coverage per repo convention)**
 
 Run: `npm run web`, then in a separate terminal: `curl 'http://localhost:8787/api/history?asset=ETH&days=14'`
-Expected: JSON with a non-empty `candles` array (each `{t,o,h,l,c}`), a `spot` object with a plausible ETH price and a Chainlink feed address, and `historySource: "coinbase-exchange"`.
+Expected: JSON with a non-empty `candles` array (each `{t,o,h,l,c}`), a `spot` object with a plausible ETH price and feed `0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70`, `historySource: "coinbase-exchange"`, and both `spotError` and `historyError` null.
 
 Run: `curl 'http://localhost:8787/api/history?asset=DOGE&days=14'`
 Expected: `400` with `{"error":"asset must be ETH or BTC"}`.
 
+**Boundary check — this is the specific bug this task was rewritten to fix. Do not skip it:**
+
+```bash
+for d in 1 2 3 10 11 30 75 76 90; do
+  echo -n "days=$d -> "
+  curl -s "http://localhost:8787/api/history?asset=ETH&days=$d" \
+    | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log(j.candles.length+' candles, historyError='+j.historyError)})"
+done
+```
+
+Expected: every one of the nine returns a non-empty `candles` array and `historyError=null`. Under the original fixed if/else ladder, `days=2` and `days=76`/`days=90` each returned `0 candles` with a Coinbase `400` ("Count of aggregations requested exceeds 300") — confirmed against the live API. If any row shows 0 candles, `granularityFor` is wrong; fix it rather than widening the clamp.
+
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/spot.ts src/server.ts
-git commit -m "feat: /api/history route — Coinbase candles + Chainlink spot, 60s cached"
+git add src/spot.ts src/server.ts tests/spot.test.ts
+git commit -m "feat: /api/history route — Coinbase candles + Chainlink spot, 60s cached
+
+granularityFor derives granularity from Coinbase's 300-candle request cap
+rather than a fixed ladder, which returned HTTP 400 for 2-day and 76-90 day
+windows. fetchSpot takes (feed, provider) so src/spot.ts imports no SDK, and
+retries once against public-RPC rate limiting. Degraded responses carry an
+explicit error string and are not cached."
 ```
 
 ---
@@ -1293,26 +1523,52 @@ with:
 
 ```js
 /**
+ * SVG presentation attributes, unlike CSS properties, are not reliably
+ * var()-resolvable across browsers — which is why the original drawPayoff
+ * hardcoded hex. Keep that. These MUST stay in sync with the :root custom
+ * properties at the top of this file.
+ */
+const CHART_COLORS = {
+  accent: '#4fd1a5',
+  danger: '#ff6b6b',
+  warn:   '#ffb84f',
+  dim:    '#8892a6',
+  grid:   '#232838',
+  axis:   '#3a4256',
+};
+
+/** Monotonic token so a slow history fetch can't overwrite a newer candidate's chart. */
+let chartRenderToken = 0;
+
+/**
  * Fetches real price history + spot and draws it together with the strike,
  * expiry, protected zone, and the existing payoff curve. Degrades to
  * strike/spot/expiry/payoff only if the history fetch fails or returns no
  * candles — the chart never blocks the flow (design rule: no fabricated
- * numbers, so a missing input is dropped, never invented).
+ * numbers, so a missing input is dropped, never invented, and the drop is
+ * stated on screen rather than left to look like completeness).
  */
 async function drawUnifiedChart(data) {
   const asset = document.getElementById('asset').value;
   const days = Number(document.getElementById('days').value) || 14;
-  let history = { candles: [], spot: null, historySource: null };
+  const token = ++chartRenderToken;
+  let history = { candles: [], spot: null, historySource: null, spotError: null, historyError: null };
   try {
-    history = await api2('/api/history?asset=' + encodeURIComponent(asset) + '&days=' + days);
+    history = await apiGet('/api/history?asset=' + encodeURIComponent(asset) + '&days=' + days);
   } catch (e) {
-    console.warn('history fetch failed, chart will degrade to strike/spot/payoff only:', e.message);
+    history.historyError = e.message;
+    history.spotError = e.message;
+    console.warn('history fetch failed, chart will degrade:', e.message);
   }
+  // A user clicking through candidates fires overlapping fetches; without this
+  // guard the slowest response wins and paints stale history over the newest
+  // selection. Silently dropping a superseded render is correct here.
+  if (token !== chartRenderToken) return;
   renderUnifiedChart(data, history, days);
 }
 
 /** GET wrapper — the existing api() helper is POST-only. */
-async function api2(path) {
+async function apiGet(path) {
   const res = await fetch(path);
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
@@ -1351,7 +1607,7 @@ function renderUnifiedChart(data, history, historyDays) {
   const candleSvg = candles.map(c => {
     const x = xHistory(c.t * 1000);
     const up = c.c >= c.o;
-    const color = up ? 'var(--accent)' : 'var(--danger)';
+    const color = up ? CHART_COLORS.accent : CHART_COLORS.danger;
     const bodyTop = yS(Math.max(c.o, c.c));
     const bodyBot = yS(Math.min(c.o, c.c));
     return `
@@ -1366,52 +1622,83 @@ function renderUnifiedChart(data, history, historyDays) {
     : '';
 
   const strikeLine = `
-    <line x1="${PAD_L}" y1="${yS(strike).toFixed(1)}" x2="${xNow.toFixed(1)}" y2="${yS(strike).toFixed(1)}" stroke="var(--warn)" stroke-dasharray="4,4" stroke-width="1.5"/>
-    <line x1="${xNow.toFixed(1)}" y1="${yS(strike).toFixed(1)}" x2="${(W - PAD_R).toFixed(1)}" y2="${yS(strike).toFixed(1)}" stroke="var(--warn)" stroke-width="2"/>
-    <text x="${(W - PAD_R + 6).toFixed(1)}" y="${(yS(strike) - 4).toFixed(1)}" fill="var(--warn)" font-size="11" font-family="monospace">$${strike.toLocaleString()} floor</text>
+    <line x1="${PAD_L}" y1="${yS(strike).toFixed(1)}" x2="${xNow.toFixed(1)}" y2="${yS(strike).toFixed(1)}" stroke="${CHART_COLORS.warn}" stroke-dasharray="4,4" stroke-width="1.5"/>
+    <line x1="${xNow.toFixed(1)}" y1="${yS(strike).toFixed(1)}" x2="${(W - PAD_R).toFixed(1)}" y2="${yS(strike).toFixed(1)}" stroke="${CHART_COLORS.warn}" stroke-width="2"/>
+    <text x="${(W - PAD_R + 6).toFixed(1)}" y="${(yS(strike) - 4).toFixed(1)}" fill="${CHART_COLORS.warn}" font-size="11" font-family="monospace">$${strike.toLocaleString()} floor</text>
   `;
 
   const spotLine = spot ? `
-    <line x1="${PAD_L}" y1="${yS(spot.price).toFixed(1)}" x2="${(W - PAD_R).toFixed(1)}" y2="${yS(spot.price).toFixed(1)}" stroke="var(--dim)" stroke-dasharray="2,3" stroke-width="1.5"/>
-    <text x="${PAD_L}" y="${(yS(spot.price) - 4).toFixed(1)}" fill="var(--dim)" font-size="11" font-family="monospace">$${spot.price.toLocaleString(undefined,{maximumFractionDigits:0})} now</text>
+    <line x1="${PAD_L}" y1="${yS(spot.price).toFixed(1)}" x2="${(W - PAD_R).toFixed(1)}" y2="${yS(spot.price).toFixed(1)}" stroke="${CHART_COLORS.dim}" stroke-dasharray="2,3" stroke-width="1.5"/>
+    <text x="${PAD_L}" y="${(yS(spot.price) - 4).toFixed(1)}" fill="${CHART_COLORS.dim}" font-size="11" font-family="monospace">$${spot.price.toLocaleString(undefined,{maximumFractionDigits:0})} now</text>
   ` : '';
 
   const pctBelowSpot = spot && spot.price > 0 ? (((spot.price - strike) / spot.price) * 100) : null;
 
   const expiryLine = `
-    <line x1="${xExpiry.toFixed(1)}" y1="${PAD_T}" x2="${xExpiry.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="#3a4256" stroke-dasharray="3,3" stroke-width="1"/>
-    <text x="${xExpiry.toFixed(1)}" y="${(PAD_T - 8).toFixed(1)}" fill="#8892a6" font-size="10" text-anchor="end" font-family="monospace">exp ${data.quote.expiryIso.slice(0,10)}</text>
+    <line x1="${xExpiry.toFixed(1)}" y1="${PAD_T}" x2="${xExpiry.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="${CHART_COLORS.axis}" stroke-dasharray="3,3" stroke-width="1"/>
+    <text x="${xExpiry.toFixed(1)}" y="${(PAD_T - 8).toFixed(1)}" fill="${CHART_COLORS.dim}" font-size="10" text-anchor="end" font-family="monospace">exp ${data.quote.expiryIso.slice(0,10)}</text>
   `;
-  const nowLine = `<line x1="${xNow.toFixed(1)}" y1="${PAD_T}" x2="${xNow.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="#232838" stroke-width="1"/>`;
+  const nowLine = `<line x1="${xNow.toFixed(1)}" y1="${PAD_T}" x2="${xNow.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="${CHART_COLORS.grid}" stroke-width="1"/>`;
 
   // Payoff gutter on the right edge: transpose payoffCurve (spot on Y, pnl on X), sharing the price axis.
-  const pts = data.payoff;
+  //
+  // CRITICAL: /api/quote returns the payoff over [strike*0.8, strike*1.2]
+  // (server.ts's payoffCurve call), but this chart's Y domain is driven by
+  // candles/strike/spot and is typically far narrower — often ~6-15% wide vs
+  // the payoff's 40%. Mapping every payoff point through the shared yS()
+  // therefore sends the endpoints hundreds of pixels outside a 320-tall
+  // viewBox (for strike 2400 with a 2280-2680 band the endpoints land at
+  // y=520 and y=-106), so most of the curve silently vanishes and what
+  // remains reads as a near-vertical stub.
+  //
+  // Fix: draw only the portion of the payoff that covers prices actually on
+  // screen, and clip as a backstop. This is honest — it shows the P/L across
+  // the visible price range — and requires no new math, so the no-fabricated-
+  // numbers rule holds: every point still comes straight from the server.
+  const visiblePts = data.payoff.filter(p => p.spot >= priceLo && p.spot <= priceHi);
   const gutterX0 = W - PAD_R + 24;
   const gutterW = PAD_R - 30;
-  const maxAbsPnl = Math.max(...pts.map(p => Math.abs(p.pnl))) * 1.1 || 1;
-  const gx = pnl => gutterX0 + gutterW / 2 + (pnl / maxAbsPnl) * (gutterW / 2);
-  const gutterPath = 'M ' + pts.map(p => `${gx(p.pnl).toFixed(1)},${yS(p.spot).toFixed(1)}`).join(' L ');
-  const gutterZero = gx(0);
+  let gutterSvg = '';
+  let gutterZero = gutterX0 + gutterW / 2;
+  if (visiblePts.length >= 2) {
+    const maxAbsPnl = Math.max(...visiblePts.map(p => Math.abs(p.pnl))) * 1.1 || 1;
+    const gx = pnl => gutterX0 + gutterW / 2 + (pnl / maxAbsPnl) * (gutterW / 2);
+    gutterZero = gx(0);
+    const gutterPath = 'M ' + visiblePts.map(p => `${gx(p.pnl).toFixed(1)},${yS(p.spot).toFixed(1)}`).join(' L ');
+    gutterSvg = `<path d="${gutterPath}" fill="none" stroke="${CHART_COLORS.accent}" stroke-width="2" clip-path="url(#plotClip)"/>`;
+  }
 
   svg.innerHTML = `
+    <defs>
+      <clipPath id="plotClip">
+        <rect x="0" y="${PAD_T}" width="${W}" height="${plotH}"/>
+      </clipPath>
+    </defs>
     ${protectedZone}
-    ${candleSvg}
+    <g clip-path="url(#plotClip)">${candleSvg}</g>
     ${strikeLine}
     ${spotLine}
     ${nowLine}
     ${expiryLine}
-    <line x1="${gutterZero.toFixed(1)}" y1="${PAD_T}" x2="${gutterZero.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="#8892a6" stroke-width="1" stroke-dasharray="2,2"/>
-    <path d="${gutterPath}" fill="none" stroke="var(--accent)" stroke-width="2"/>
-    <text x="${gutterX0.toFixed(1)}" y="${(H - 10).toFixed(1)}" fill="#8892a6" font-size="9" font-family="monospace">payoff</text>
+    <line x1="${gutterZero.toFixed(1)}" y1="${PAD_T}" x2="${gutterZero.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="${CHART_COLORS.dim}" stroke-width="1" stroke-dasharray="2,2"/>
+    ${gutterSvg}
+    <text x="${gutterX0.toFixed(1)}" y="${(H - 10).toFixed(1)}" fill="${CHART_COLORS.dim}" font-size="9" font-family="monospace">payoff</text>
   `;
 
+  // Attribution — four numbers, four named sources (design rule 3). A missing
+  // input is stated in place, never quietly omitted: a chart that lost its
+  // spot line must not look identical to one that never had a spot line.
   const attribution = document.getElementById('chartAttribution');
   const spotText = spot
     ? `spot $${spot.price.toLocaleString(undefined,{maximumFractionDigits:0})} (Chainlink, ${new Date(spot.updatedAt).toLocaleTimeString()})` +
       (pctBelowSpot !== null ? ` · floor is ${pctBelowSpot.toFixed(1)}% below spot` : '')
-    : 'spot unavailable';
-  const historyText = history.historySource ? 'candles: Coinbase' : 'candles unavailable';
+    : 'SPOT UNAVAILABLE — no live price to compare your floor against';
+  const historyText = history.historySource ? 'candles: Coinbase' : 'CANDLES UNAVAILABLE';
   attribution.textContent = `${historyText} · ${spotText} · strike: live Thetanuts order · payoff: previewFillOrder()`;
+  attribution.style.color = (spot && history.historySource) ? 'var(--dim)' : 'var(--warn)';
+  if (history.spotError || history.historyError) {
+    console.warn('chart degraded —', { spotError: history.spotError, historyError: history.historyError });
+  }
 }
 ```
 
@@ -1438,8 +1725,12 @@ with:
 Run: `npm run web`, open `http://localhost:8787`, run the flow through step 2 into step 3.
 Expected: candles render on the left ~70% of the chart width, a dashed-then-solid amber strike line runs across, a dotted grey spot line sits at the current price with a "X% below spot" annotation, a vertical expiry marker sits at the right edge, the region below strike/right of now is faintly shaded green, and the accent-green payoff curve appears in a narrow gutter on the right sharing the same price axis. Confirm the attribution line under the chart names Coinbase, Chainlink, Thetanuts, and `previewFillOrder()`.
 
+**Explicitly check the payoff gutter is actually on screen** — this was the defect that made the earlier draft of this task wrong. In devtools, inspect the gutter `<path>` and confirm every `y` coordinate in its `d` attribute falls between `PAD_T` (26) and `H - PAD_B` (286). A `y` of 500+ or a negative `y` means the visible-band filter isn't being applied and the curve is being drawn outside the viewBox. The curve should show a visible kink where it crosses the strike line's height, with both a sloped and a flat segment present.
+
 Test the degrade path: temporarily block `api.exchange.coinbase.com` (e.g. via browser devtools' network request blocking) and reload step 3.
-Expected: chart still shows strike, spot (if Chainlink still reachable), expiry, protected zone, and payoff gutter — no candles, no crash, no blocked flow.
+Expected: chart still shows strike, spot (if Chainlink still reachable), expiry, protected zone, and payoff gutter — no candles, no crash, no blocked flow, and the attribution line turns amber and reads "CANDLES UNAVAILABLE" rather than silently omitting the source.
+
+Test the race guard: click rapidly between three candidates in step 2. Expected: the chart that settles matches the candidate that stays selected — no flicker to a previous candidate's history.
 
 - [ ] **Step 5: Commit**
 
@@ -1453,9 +1744,48 @@ git commit -m "feat: unified candlestick + strike/spot/expiry/payoff chart"
 ## Task 10: Correctness tier — debounce input, distance-gated "closest match" badge, honest far-miss copy
 
 **Files:**
-- Modify: `web/index.html` (`onConstraintChange`, `renderCandidates`)
+- Modify: `web/index.html` (step-2 markup, `onConstraintChange`, `findFloors`, `renderCandidates`)
 
-- [ ] **Step 1: Debounce the constraint-change handler so it stops firing a quote per keystroke**
+**Interfaces:**
+- Consumes: `pctFromImpliedStrike` (absolute) and `pctVsImpliedStrike` (signed) from `toWire` (Task 4)
+
+- [ ] **Step 1: Give the far-miss warning and the staleness notice their own elements**
+
+The far-miss copy CANNOT be written into `#candVerdict`. `renderCandidates` ends by calling `selectCandidate`, which immediately overwrites `#candVerdict` with a spinner and then the quote verdict — so a warning written there is destroyed milliseconds after it appears, and the flagship "'closest match' is a lie" fix would never be visible. It needs a separate element, declared above the verdict.
+
+In the step-2 block, replace:
+
+```html
+    <div class="candidate-list" id="candidateList" style="display:none;"></div>
+    <div class="verdict" id="candVerdict" style="display:none;"></div>
+```
+
+with:
+
+```html
+    <div class="verdict" id="candStale" style="display:none;"></div>
+    <div class="candidate-list" id="candidateList" style="display:none;"></div>
+    <div class="verdict" id="candFarMiss" style="display:none;"></div>
+    <div class="verdict" id="candVerdict" style="display:none;"></div>
+```
+
+- [ ] **Step 2: Debounce the constraint-change handler so it stops firing a quote per keystroke, and detect a stale list**
+
+Debouncing alone is not enough. Before this plan, `renderCandidates` recomputed its dollar figure client-side, so an edited floor at least updated the numbers. After Task 4 the distance lives in `pctFromImpliedStrike`, **baked server-side at fetch time** — so re-rendering the same array against an edited floor would show badges measured against the *old* implied strike. That is a worse lie than the one being fixed. Detect the change and say so instead of re-rendering silently.
+
+Add near the top-level `state` declaration:
+
+```js
+/** The spec the current candidate list was actually fetched for. */
+state.candidatesSpec = null;
+```
+
+and set it in `findFloors`, immediately after a successful fetch (`state.candidates = candidates;`):
+
+```js
+    state.candidatesSpec = currentSpec();
+    document.getElementById('candStale').style.display = 'none';
+```
 
 Replace (around line 653-662):
 
@@ -1476,13 +1806,33 @@ with:
 
 ```js
 let constraintChangeTimer = null;
+
+function specsMatch(a, b) {
+  return !!a && !!b && a.asset === b.asset && a.quantity === b.quantity
+    && a.floorTotalUsd === b.floorTotalUsd && a.horizonDays === b.horizonDays;
+}
+
 function onConstraintChange() {
-  restateSentence();
+  restateSentence(); // immediate — this is the live per-unit readout, never debounced
   if (constraintChangeTimer) clearTimeout(constraintChangeTimer);
   constraintChangeTimer = setTimeout(() => {
-    if (state.candidates.length > 0) {
+    if (!state.candidates.length) return;
+    const stale = document.getElementById('candStale');
+    if (specsMatch(state.candidatesSpec, currentSpec())) {
+      stale.style.display = 'none';
       renderCandidates(state.candidates);
+      return;
     }
+    // Constraint changed since these offers were fetched. Their strike
+    // distances were computed server-side against the OLD implied strike, so
+    // re-rendering would show badges measuring the wrong thing. Say so and
+    // leave the list untouched until the user re-queries the live book.
+    const old = state.candidatesSpec;
+    stale.style.display = 'block';
+    stale.innerHTML = `<b>These offers are out of date.</b> They were matched against ` +
+      `$${(old.floorTotalUsd / old.quantity).toLocaleString(undefined,{maximumFractionDigits:2})} per ${old.asset} ` +
+      `(${old.quantity} ${old.asset} · $${old.floorTotalUsd.toLocaleString()} total · ${old.horizonDays}d). ` +
+      `Click <b>Find real offers</b> again to re-query the live book for your new constraint.`;
   }, 400);
 }
 
@@ -1491,7 +1841,7 @@ function onConstraintChange() {
 );
 ```
 
-- [ ] **Step 2: Stop resetting the selection to candidate 0 on every re-render**
+- [ ] **Step 3: Stop resetting the selection to candidate 0 on every re-render**
 
 `renderCandidates` currently always calls `selectCandidate(0, el.children[0])` at line 748, discarding whatever the user had selected. Replace the end of `renderCandidates` (around line 728-749):
 
@@ -1528,8 +1878,13 @@ function renderCandidates(list) {
 with:
 
 ```js
-/** A candidate more than this far below the user's implied strike doesn't earn the "closest match" badge. */
+/** A candidate further than this from the user's implied strike doesn't earn the "closest match" badge. */
 const CLOSEST_MATCH_MAX_PCT = 15;
+
+/** Human-readable direction for a signed distance. */
+function strikeDirection(pctVs) {
+  return pctVs >= 0 ? 'below' : 'above';
+}
 
 function renderCandidates(list) {
   const el = document.getElementById('candidateList');
@@ -1542,9 +1897,16 @@ function renderCandidates(list) {
     div.onclick = () => selectCandidate(i, div);
     const gapBadge = c.coverageGapDays > 0.25
       ? `<span class="badge warn">ends ${c.coverageGapDays.toFixed(1)}d early</span>` : '';
-    const isClose = c.pctBelowImpliedStrike <= CLOSEST_MATCH_MAX_PCT;
+    // Gate on ABSOLUTE distance. filterCandidates ranks by absolute distance,
+    // so list[0] can sit far ABOVE the user's floor when the book has nothing
+    // near it — a strike 30% above is a real mismatch (it costs far more than
+    // asked), not a perfect one. Label with the signed value so the user can
+    // see which side of their floor it falls on.
+    const isClose = c.pctFromImpliedStrike <= CLOSEST_MATCH_MAX_PCT;
     const bestBadge = i === 0 && isClose ? '<span class="badge good">closest match</span>' : '';
-    const farBadge = i === 0 && !isClose ? `<span class="badge warn">${c.pctBelowImpliedStrike.toFixed(0)}% below your floor</span>` : '';
+    const farBadge = i === 0 && !isClose
+      ? `<span class="badge warn">${c.pctFromImpliedStrike.toFixed(0)}% ${strikeDirection(c.pctVsImpliedStrike)} your floor</span>`
+      : '';
     div.innerHTML = `
       <div>
         <div class="strike">$${c.strike.toLocaleString()} floor ${bestBadge}${farBadge}${gapBadge}</div>
@@ -1557,33 +1919,60 @@ function renderCandidates(list) {
     `;
     el.appendChild(div);
   });
-  if (!list.length) return;
+
+  // The far-miss warning goes in its OWN element. selectCandidate (called at
+  // the end of this function) overwrites #candVerdict with a spinner and then
+  // the quote verdict, so anything written there would be gone in milliseconds.
+  const farMiss = document.getElementById('candFarMiss');
+  if (!list.length) { farMiss.style.display = 'none'; return; }
   const nearest = list[0];
-  if (nearest.pctBelowImpliedStrike > CLOSEST_MATCH_MAX_PCT) {
-    const v = document.getElementById('candVerdict');
-    v.style.display = 'block';
-    v.innerHTML = `<b>Nothing on the live book is close to your stated floor.</b> The nearest match is ${nearest.pctBelowImpliedStrike.toFixed(0)}% below what you asked for — Payung shows it rather than hiding it, but this is not a good match. Try a floor closer to spot.`;
+  if (nearest.pctFromImpliedStrike > CLOSEST_MATCH_MAX_PCT) {
+    farMiss.style.display = 'block';
+    farMiss.innerHTML = `<b>Nothing on the live book is close to your stated floor.</b> ` +
+      `Your $${nearest.impliedStrike.toLocaleString(undefined,{maximumFractionDigits:2})} per-${asset} floor's ` +
+      `nearest match is $${nearest.strike.toLocaleString()} — ${nearest.pctFromImpliedStrike.toFixed(0)}% ` +
+      `${strikeDirection(nearest.pctVsImpliedStrike)} what you asked for. Payung shows it rather than hiding it, ` +
+      `but this is not a good match. Try a floor closer to spot.`;
+  } else {
+    farMiss.style.display = 'none';
   }
+
   const restoreIndex = previouslySelectedId ? list.findIndex(c => c.id === previouslySelectedId) : -1;
   const indexToSelect = restoreIndex >= 0 ? restoreIndex : 0;
   selectCandidate(indexToSelect, el.children[indexToSelect]);
 }
 ```
 
+Also clear `#candFarMiss` and `#candStale` in `resetFlow()` alongside the other step resets, and reset `state.candidatesSpec = null` there — otherwise a stale banner survives "start over".
+
 Note: this removes the client-side `pricePerContract * heldAmount` total from the candidate list (Honesty tier item 7 from the design doc — folded in here since it's the same lines being touched) — the list now shows only the server-provided `$/unit` rate, and the confirmed total appears after `selectCandidate` fetches the real quote, same as it already does in the Step 3 cost card.
 
-- [ ] **Step 3: Manual verification**
+- [ ] **Step 4: Manual verification**
 
 Run: `npm run web`, open the app.
-Expected: typing quickly in the Floor field no longer fires a visible flurry of "pricing with previewFillOrder()..." spinners — only one, ~400ms after typing stops. Selecting a non-first candidate, then editing an unrelated field (e.g. toggling nothing, just re-triggering a debounce by typing and deleting a character in Days), keeps that same candidate selected rather than snapping back to index 0.
 
-Test the far-miss path: enter "0.32 ETH, $798 total, 14 days" via the form fields directly (Amount=0.32, Floor=798, Days=14) and click "Find real offers". Expected: the top result does NOT show a green "closest match" badge; instead it shows an amber "N% below your floor" badge and the verdict area explains the nearest match is far off.
+*Debounce:* typing quickly in the Floor field no longer fires a flurry of "pricing with previewFillOrder()..." spinners — only one, ~400ms after typing stops.
 
-- [ ] **Step 4: Commit**
+*Selection persistence:* select the third candidate, then re-trigger the debounce without changing the spec (type a character in Floor and delete it, returning to the same value). The third candidate stays selected rather than snapping to index 0.
+
+*Staleness:* select a candidate, then change Floor to a genuinely different value. Expected: the amber "These offers are out of date" banner appears above the list, naming the old per-unit floor, and the list is left as-is — no badge silently re-measured against the new floor. Clicking "Find real offers" clears it.
+
+*Far miss (below):* set Amount=1, Floor=1000, Days=14 — an implied $1,000/ETH floor, roughly 60% under spot, far from anything the book quotes. Expected: no green "closest match"; an amber "N% below your floor" badge instead, and the `#candFarMiss` block explains it. **Confirm the warning is still on screen after the quote resolves** — that is the specific regression this step exists to prevent, since it previously shared an element with the verdict and was overwritten instantly.
+
+*Far miss (above):* set Floor to a value well *above* spot (e.g. Amount=1, Floor=6000). Expected: the far-miss warning still fires and reads "above your floor". Under the earlier clamped `Math.max(0, …)` distance this case scored 0% and wrongly earned a green "closest match".
+
+Note: do **not** use "0.32 ETH / $798 total" as the far-miss case. Post-fix that implies a ~$2,494/ETH floor — close to spot and a perfectly good match. It is the *regression* case for Task 6, not a far-miss case.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add web/index.html
-git commit -m "fix: debounce constraint edits, gate 'closest match' badge by distance, drop client-computed premium from candidate list"
+git commit -m "fix: debounce constraint edits, gate 'closest match' on absolute distance, flag stale candidate lists, drop client-computed premium
+
+The far-miss warning gets its own element: it previously shared #candVerdict
+with the quote verdict, which selectCandidate overwrites milliseconds later.
+Distance now gates on absolute deviation — clamping negatives to zero badged
+a strike far ABOVE the requested floor as a perfect match."
 ```
 
 ---
@@ -1788,8 +2177,26 @@ In the `### src/core.ts — the one module that matters most` section, find the 
 Replace with:
 
 ```
-- `ProtectionSpec` (type) — `{asset: 'ETH'|'BTC', quantity, floorTotalUsd, horizonDays}`, the parsed user intent. `floorTotalUsd` is the TOTAL value the whole holding must be worth, never a per-unit price — the per-unit strike a match is ranked against is derived via `impliedStrike(spec) = floorTotalUsd / quantity`, exported from this file. Do not add a second stored per-unit field; every caller reads `impliedStrike`, so the total and per-unit readings can never drift apart (this fixed a real matching bug where "$798 for 0.32 ETH" was matched against an $798 strike instead of the correct $2,493.75).
+- `ProtectionSpec` (type) — `{asset: 'ETH'|'BTC', quantity, floorTotalUsd, horizonDays}`, the parsed user intent. Defined in `src/spec.ts` and re-exported from this file, so existing `from './core.js'` imports keep working. `floorTotalUsd` is the TOTAL value the whole holding must be worth, never a per-unit price — the per-unit strike a match is ranked against is derived via `impliedStrike(spec) = floorTotalUsd / quantity`. Do not add a second stored per-unit field; every caller reads `impliedStrike`, so the total and per-unit readings can never drift apart (this fixed a real matching bug where "$798 for 0.32 ETH" was matched against an $798 strike instead of the correct $2,493.75).
 ```
+
+- [ ] **Step 2b: Add the two new modules to the code-structure tree, with their reasons**
+
+Both new modules exist to satisfy a design rule that isn't visible from their contents. Without the note, a future agent will "simplify" them back and silently break rule 1. In the `src/` tree in the "Code structure" section, add:
+
+```
+  spec.ts       — ProtectionSpec + impliedStrike. ZERO imports, deliberately: intent.ts needs
+                  impliedStrike at RUNTIME, and rule 1 forbids it value-importing core.ts.
+                  Do NOT merge this back into core.ts.
+  spot.ts       — Coinbase candle history + Chainlink spot for the chart. Must never import the
+                  Thetanuts SDK, not even as a type; takes (feed, provider) as plain arguments.
+```
+
+Then amend design rule 1 in the "Design rules that must never be violated" section. It currently says `intent.ts` and `judgment.ts` import only *types* from `core` — still true, and now add: they may value-import `spec.ts`, which is dependency-free by construction. Note in the same rule that `spot.ts` reaches the chain through an `ethers.Provider` handed to it by `server.ts`, never through the SDK.
+
+- [ ] **Step 2c: Record the verified Chainlink fact**
+
+Add to the "Confirmed technical facts" list (matching the style of the existing entries, which cite live verification): `chainConfig.priceFeeds.ETH` (`0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70`) and `.BTC` (`0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F`) are genuine Chainlink AggregatorV3 proxies on Base — both answer `latestRoundData()` and `decimals()` (8), ETH's `description()` returns "ETH / USD". This is what makes the chart's spot marker the actual settlement price rather than a second opinion. Also note that the public `mainnet.base.org` RPC rate-limits these reads under light load (observed: "missing revert data" on a call that succeeded seconds earlier), which is why `fetchSpot` retries once.
 
 Update the CLI description line similarly — find:
 
@@ -1821,11 +2228,36 @@ git commit -m "docs: HANDOFF.md reflects the new quantity+total ProtectionSpec a
 Run: `npm test && npx tsc --noEmit`
 Expected: all tests pass; the only `tsc` error is the single pre-existing, out-of-scope `chainConfig.contracts.optionBook: string | null` in `src/core.ts` noted in the Global Constraints section. If any other error appears, find and fix the task that introduced it before proceeding.
 
+Baseline for comparison: **49 tests across 9 files were green before this plan started.** This plan adds `tests/implied-strike.test.ts` and `tests/spot.test.ts` and extends `filter`/`intent`/`wire` — so the count must go *up*. A lower count means a file stopped being collected, not that tests were consolidated.
+
+- [ ] **Step 1b: Confirm the architecture rules still hold mechanically**
+
+```bash
+grep -n "thetanuts-client" src/spot.ts          # must print nothing
+grep -n "^import" src/spec.ts                    # must print nothing
+grep -rn "from './core.js'" src/intent.ts        # must print nothing (it imports ./spec.js)
+grep -rn "floorUsd" src/ tests/ web/ README.md docs/   # must print nothing
+```
+
+All four must come back empty. The first three are the design-rule-1 guards; the fourth confirms the rename is complete, including `README.md:33` and the `src/server.ts:154` comment that the original draft of this plan wrongly asserted did not exist.
+
+- [ ] **Step 1c: Confirm the Coinbase granularity fix holds across the whole allowed range**
+
+With `npm run web` running, run the nine-day-count loop from Task 8 Step 3 again. Every row must show a non-empty `candles` array and `historyError=null`. This is the one defect in this plan's earlier draft that failed silently rather than loudly — a 400 from Coinbase produced an empty chart, not an error the user or the developer would notice.
+
 - [ ] **Step 2: End-to-end manual walkthrough**
 
 Run: `npm run web`, open `http://localhost:8787`.
 
 Walk the full flow once with the original regression case: type "I have 0.32 ETH and need it worth at least $798 in two weeks" into the NL box, click Parse, confirm Amount/Floor/Days fill correctly and the restated sentence shows "$2,493.75 per ETH". Click through to candidates, confirm the unified chart renders candles + strike + spot + expiry + protected zone + payoff gutter, confirm the verdict box is colored by severity, confirm the coverage-gap sentence appears if applicable, and confirm the candidate list no longer shows a client-computed total.
+
+Then confirm the five defects this plan was revised to close are actually closed, since each of them fails quietly rather than crashing:
+
+1. **Payoff gutter on screen** — inspect the gutter `<path>`; every `y` in its `d` must fall within 26–286. (Was: endpoints at y≈520 and y≈−106, outside a 320-tall viewBox.)
+2. **Far-miss warning survives the quote** — with Floor=1000, the `#candFarMiss` text must still be visible *after* the verdict finishes loading. (Was: written into `#candVerdict`, overwritten by `selectCandidate` immediately.)
+3. **Far-miss fires above the floor too** — with Floor=6000, expect an amber "% above your floor" badge, not green "closest match". (Was: `Math.max(0, …)` scored every above-floor strike as 0%.)
+4. **Stale list is flagged** — edit Floor after fetching; expect the "out of date" banner, not silently re-measured badges.
+5. **`days=2` returns candles** — set Days=2 and reach step 3; the chart must show candles. (Was: Coinbase 400, empty chart, server-side log only.)
 
 Run: `npm run quote -- 0.32 798 5 14`
 Expected: CLI confirms the same implied strike ($2,493.75) the web UI computed.

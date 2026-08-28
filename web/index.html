@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Payung — buy a floor</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #12151d;
+    --panel-2: #171b25;
+    --border: #232838;
+    --text: #e8eaf0;
+    --dim: #8892a6;
+    --accent: #4fd1a5;
+    --accent-dim: #2a5c4a;
+    --danger: #ff6b6b;
+    --warn: #ffb84f;
+    --mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 28px;
+  }
+  header .brand { display: flex; align-items: baseline; gap: 10px; }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: -0.02em; }
+  header .tag { color: var(--dim); font-size: 13px; }
+  header .net {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+    padding: 4px 9px;
+    border-radius: 20px;
+    background: rgba(79,209,165,0.08);
+  }
+  .step {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px;
+    margin-bottom: 16px;
+    opacity: 0.35;
+    filter: saturate(0.5);
+    transition: opacity 0.35s ease, filter 0.35s ease;
+    pointer-events: none;
+  }
+  .step.active, .step.done {
+    opacity: 1;
+    filter: none;
+    pointer-events: auto;
+  }
+  .step-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    margin-bottom: 14px;
+  }
+  .step-num {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    color: var(--dim);
+    flex-shrink: 0;
+  }
+  .step.done .step-num { background: var(--accent); border-color: var(--accent); color: #06251a; }
+  .step.active .step-num { border-color: var(--accent); color: var(--accent); }
+
+  .field-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .field { flex: 1; min-width: 140px; }
+  .field label { display: block; font-size: 11px; color: var(--dim); margin-bottom: 5px; }
+  .field input, .field select {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+
+  .btn {
+    background: var(--accent);
+    color: #06251a;
+    border: none;
+    border-radius: 8px;
+    padding: 11px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.1s ease, opacity 0.15s ease;
+  }
+  .btn:hover { opacity: 0.9; }
+  .btn:active { transform: scale(0.98); }
+  .btn.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn.danger { background: var(--danger); color: #2a0808; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .sentence {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--dim);
+  }
+  .sentence b { color: var(--text); font-weight: 600; }
+  .sentence .accent { color: var(--accent); font-weight: 600; }
+
+  .candidate-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .candidate {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 13px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .candidate:hover { border-color: #3a4256; }
+  .candidate.selected { border-color: var(--accent); background: rgba(79,209,165,0.06); }
+  .candidate .strike { font-size: 16px; font-weight: 600; }
+  .candidate .meta { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .candidate .premium { text-align: right; }
+  .candidate .premium .amount { font-family: var(--mono); font-size: 15px; }
+  .candidate .premium .label { font-size: 11px; color: var(--dim); }
+  .candidate .badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .badge.good { background: rgba(79,209,165,0.15); color: var(--accent); }
+  .badge.warn { background: rgba(255,184,79,0.15); color: var(--warn); }
+
+  .verdict {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px dashed var(--border);
+    font-size: 13px;
+    color: var(--dim);
+  }
+  .verdict b { color: var(--text); }
+
+  svg { display: block; width: 100%; height: auto; }
+  .chart-wrap { margin-top: 16px; }
+  .chart-legend {
+    display: flex;
+    gap: 18px;
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--dim);
+  }
+  .chart-legend span { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+  .exec-row { display: flex; gap: 10px; margin-top: 16px; align-items: center; flex-wrap: wrap; }
+  .sim-result {
+    margin-top: 14px;
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+  }
+  .sim-result.ok { border-color: var(--accent-dim); color: var(--accent); }
+  .tx-card {
+    margin-top: 16px;
+    padding: 18px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(79,209,165,0.10), rgba(79,209,165,0.02));
+    border: 1px solid var(--accent-dim);
+  }
+  .tx-card .tx-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .tx-card .tx-hash { font-family: var(--mono); font-size: 13px; word-break: break-all; color: var(--accent); }
+  .tx-card a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  .tx-card a:hover { text-decoration: underline; }
+
+  .mock-banner {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: center;
+    color: var(--dim);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    margin-bottom: 20px;
+  }
+  .reset-link {
+    display: block;
+    text-align: center;
+    margin-top: 28px;
+    color: var(--dim);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .reset-link:hover { color: var(--text); }
+
+  .spinner {
+    display: inline-block;
+    width: 13px; height: 13px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: var(--text);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <h1>☂ Payung</h1>
+      <span class="tag">buy a floor</span>
+    </div>
+    <span class="net">BASE MAINNET</span>
+  </header>
+
+  <div class="mock-banner">
+    PROTOTYPE — candidates below are illustrative, sampled from a real Base mainnet orderbook capture. Nothing here spends real money.
+  </div>
+
+  <!-- STEP 1: constraint -->
+  <div class="step active" id="step1">
+    <div class="step-label"><span class="step-num">1</span> State what you're afraid of losing</div>
+    <div class="field-row">
+      <div class="field">
+        <label>Asset you hold</label>
+        <select id="asset">
+          <option value="ETH">ETH</option>
+          <option value="BTC">BTC</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Amount you hold</label>
+        <input id="amount" type="number" value="1" step="0.1" min="0.1" />
+      </div>
+      <div class="field">
+        <label>Floor price you need ($)</label>
+        <input id="floor" type="number" value="2300" step="10" />
+      </div>
+      <div class="field">
+        <label>By when (days)</label>
+        <input id="days" type="number" value="14" min="1" max="90" />
+      </div>
+    </div>
+    <p class="sentence" id="restated">
+      "I have <b>1 ETH</b>. I need it to be worth at least <b class="accent">$2,300</b> in <b>14 days</b>."
+    </p>
+    <button class="btn" onclick="findFloors()">Find real offers on Thetanuts →</button>
+  </div>
+
+  <!-- STEP 2: candidates -->
+  <div class="step" id="step2">
+    <div class="step-label"><span class="step-num">2</span> Live offers pulled from the orderbook</div>
+    <p class="sentence" style="margin-bottom:0">Querying <b>fetchOrders()</b> on Base, filtered to buyable puts near your strike...</p>
+    <div id="candLoading" style="margin-top:14px; color:var(--dim); font-size:13px;"><span class="spinner"></span>fetching live book...</div>
+    <div class="candidate-list" id="candidateList" style="display:none;"></div>
+    <div class="verdict" id="candVerdict" style="display:none;"></div>
+  </div>
+
+  <!-- STEP 3: payoff -->
+  <div class="step" id="step3">
+    <div class="step-label"><span class="step-num">3</span> What happens at expiry</div>
+    <div class="chart-wrap">
+      <svg id="payoffChart" viewBox="0 0 600 260"></svg>
+      <div class="chart-legend">
+        <span><span class="dot" style="background:var(--accent)"></span> protected (your position + put)</span>
+        <span><span class="dot" style="background:var(--dim)"></span> unprotected (asset alone)</span>
+      </div>
+    </div>
+    <p class="sentence" id="payoffSummary" style="margin-top:14px;"></p>
+    <button class="btn" onclick="goToExecute()">Continue →</button>
+  </div>
+
+  <!-- STEP 4: simulate + execute -->
+  <div class="step" id="step4">
+    <div class="step-label"><span class="step-num">4</span> Simulate, then execute for real</div>
+    <p class="sentence">This runs <b>callStaticFillOrder()</b> against current chain state — free, and tells you if the real transaction would succeed.</p>
+    <div class="exec-row">
+      <button class="btn secondary" id="simBtn" onclick="runSimulate()">Simulate fill (free)</button>
+      <button class="btn danger" id="execBtn" onclick="runExecute()" disabled>Execute for real</button>
+    </div>
+    <div id="simResult"></div>
+    <div id="txResult"></div>
+  </div>
+
+  <span class="reset-link" onclick="resetFlow()">↻ start over</span>
+
+</div>
+
+<script>
+// ---- Mock data, shaped like the real PROJECT.md pricing table ----
+const PRICING_TABLE = [
+  { strike: 2080, pct: 15, premium: 3.04 },
+  { strike: 2150, pct: 12, premium: 5.07 },
+  { strike: 2200, pct: 10, premium: 7.97 },
+  { strike: 2250, pct: 8,  premium: 12.50 },
+  { strike: 2300, pct: 6,  premium: 19.94 },
+  { strike: 2350, pct: 4,  premium: 30.96 },
+];
+const SPOT = 2450;
+let state = { candidates: [], selected: null, quote: null };
+
+function restateSentence() {
+  const asset = document.getElementById('asset').value;
+  const amount = document.getElementById('amount').value || '1';
+  const floor = Number(document.getElementById('floor').value || 0).toLocaleString();
+  const days = document.getElementById('days').value || '14';
+  document.getElementById('restated').innerHTML =
+    `"I have <b>${amount} ${asset}</b>. I need it to be worth at least <b class="accent">$${floor}</b> in <b>${days} days</b>."`;
+}
+['asset','amount','floor','days'].forEach(id =>
+  document.getElementById(id).addEventListener('input', restateSentence)
+);
+
+function setStep(n) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById('step' + i);
+    el.classList.remove('active', 'done');
+    if (i < n) el.classList.add('done');
+    if (i === n) el.classList.add('active');
+  }
+}
+
+function findFloors() {
+  const floor = Number(document.getElementById('floor').value);
+  setStep(2);
+  document.getElementById('candLoading').style.display = 'block';
+  document.getElementById('candidateList').style.display = 'none';
+  document.getElementById('candVerdict').style.display = 'none';
+
+  // simulate network latency of a real fetchOrders() call
+  setTimeout(() => {
+    // rank the mock book by distance to requested floor, like findCandidates() does
+    const ranked = [...PRICING_TABLE].sort((a,b) => Math.abs(a.strike-floor) - Math.abs(b.strike-floor)).slice(0,5);
+    state.candidates = ranked;
+    renderCandidates(ranked, floor);
+    document.getElementById('candLoading').style.display = 'none';
+    document.getElementById('candidateList').style.display = 'flex';
+  }, 900);
+}
+
+function renderCandidates(list, floor) {
+  const el = document.getElementById('candidateList');
+  el.innerHTML = '';
+  list.forEach((c, i) => {
+    const pctOfProtection = ((c.premium / c.strike) * 100).toFixed(2);
+    const div = document.createElement('div');
+    div.className = 'candidate';
+    div.onclick = () => selectCandidate(i, div);
+    div.innerHTML = `
+      <div>
+        <div class="strike">$${c.strike.toLocaleString()} floor
+          ${c.strike === closest(list, floor) ? '<span class="badge good">closest match</span>' : ''}
+        </div>
+        <div class="meta">${c.pct}% below spot ($${SPOT.toLocaleString()}) · 8.7d window · put, buyable</div>
+      </div>
+      <div class="premium">
+        <div class="amount">$${c.premium.toFixed(2)}</div>
+        <div class="label">premium</div>
+      </div>
+    `;
+    el.appendChild(div);
+  });
+  // auto-pick the closest match
+  const closestIdx = list.findIndex(c => c.strike === closest(list, floor));
+  selectCandidate(closestIdx >= 0 ? closestIdx : 0, el.children[closestIdx >= 0 ? closestIdx : 0]);
+}
+function closest(list, floor) {
+  return list.reduce((a,b) => Math.abs(a.strike-floor) < Math.abs(b.strike-floor) ? a : b).strike;
+}
+
+function selectCandidate(i, el) {
+  document.querySelectorAll('.candidate').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  const c = state.candidates[i];
+  state.selected = c;
+
+  const pctOfValue = ((c.premium / c.strike) * 100);
+  const verdict = document.getElementById('candVerdict');
+  verdict.style.display = 'block';
+  if (pctOfValue > 8) {
+    verdict.innerHTML = `<b>Judgment call:</b> this premium is ${pctOfValue.toFixed(1)}% of the value protected — getting expensive relative to how close it sits to spot. Still your call, but a floor further from spot (e.g. $2,150) costs a lot less.`;
+  } else {
+    verdict.innerHTML = `<b>Judgment call:</b> premium is ${pctOfValue.toFixed(1)}% of the value protected — reasonable for how close this floor sits to spot ($${SPOT.toLocaleString()}).`;
+  }
+
+  buildQuote(c);
+  setStep(3);
+  drawPayoff(c);
+}
+
+function buildQuote(c) {
+  state.quote = { strike: c.strike, premium: c.premium };
+  const days = document.getElementById('days').value || 14;
+  document.getElementById('payoffSummary').innerHTML =
+    `If ETH is below <b>$${c.strike.toLocaleString()}</b> at expiry, the contract pays you the difference — your real ETH is never sold. ` +
+    `If ETH stays above it, the contract expires worthless and you're out the <b>$${c.premium.toFixed(2)}</b> premium — but your ETH is worth more anyway.`;
+}
+
+function drawPayoff(c) {
+  const svg = document.getElementById('payoffChart');
+  const W = 600, H = 260, PAD = 40;
+  const lo = c.strike * 0.85, hi = c.strike * 1.15;
+  const amount = Number(document.getElementById('amount').value) || 1;
+
+  const xScale = spot => PAD + ((spot - lo) / (hi - lo)) * (W - 2*PAD);
+  // pnl relative to holding, scaled per 1 unit of asset for visual clarity
+  const contracts = amount; // simplification for the mock
+  const maxAbs = Math.max(c.premium * contracts, (c.strike - lo) * contracts) * 1.1;
+  const yScale = pnl => H/2 - (pnl / maxAbs) * (H/2 - 20);
+
+  const N = 40;
+  let protectedPts = [], unprotectedPts = [];
+  for (let i = 0; i <= N; i++) {
+    const spot = lo + (hi - lo) * i / N;
+    const intrinsic = Math.max(0, c.strike - spot) * contracts;
+    const protectedPnl = intrinsic - c.premium * contracts; // just the put's PnL (bought put)
+    const unprotectedPnl = 0; // baseline reference (holding alone = no hedge pnl)
+    protectedPts.push([xScale(spot), yScale(protectedPnl)]);
+    unprotectedPts.push([xScale(spot), yScale(unprotectedPnl)]);
+  }
+  const toPath = pts => 'M ' + pts.map(p => p.map(v=>v.toFixed(1)).join(',')).join(' L ');
+
+  svg.innerHTML = `
+    <line x1="${PAD}" y1="${H/2}" x2="${W-PAD}" y2="${H/2}" stroke="#232838" stroke-width="1"/>
+    <line x1="${xScale(c.strike)}" y1="20" x2="${xScale(c.strike)}" y2="${H-20}" stroke="#3a4256" stroke-dasharray="4,4" stroke-width="1"/>
+    <text x="${xScale(c.strike)}" y="14" fill="#8892a6" font-size="11" text-anchor="middle" font-family="monospace">strike $${c.strike}</text>
+    <path d="${toPath(unprotectedPts)}" fill="none" stroke="#8892a6" stroke-width="1.5" stroke-dasharray="3,3"/>
+    <path d="${toPath(protectedPts)}" fill="none" stroke="#4fd1a5" stroke-width="2.5"/>
+    <text x="${PAD}" y="${H-6}" fill="#8892a6" font-size="10" font-family="monospace">$${lo.toFixed(0)}</text>
+    <text x="${W-PAD}" y="${H-6}" fill="#8892a6" font-size="10" font-family="monospace" text-anchor="end">$${hi.toFixed(0)}</text>
+  `;
+}
+
+function goToExecute() {
+  setStep(4);
+}
+
+function runSimulate() {
+  const btn = document.getElementById('simBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>simulating callStaticFillOrder()...';
+  document.getElementById('simResult').innerHTML = '';
+
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = 'Re-simulate';
+    const el = document.createElement('div');
+    el.className = 'sim-result ok';
+    el.textContent = `✓ would succeed — order fillable for $${(state.quote.premium).toFixed(2)} premium against strike $${state.quote.strike}`;
+    document.getElementById('simResult').innerHTML = '';
+    document.getElementById('simResult').appendChild(el);
+    document.getElementById('execBtn').disabled = false;
+  }, 1100);
+}
+
+function runExecute() {
+  const btn = document.getElementById('execBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>sending fillOrder()...';
+
+  setTimeout(() => {
+    btn.textContent = 'Executed ✓';
+    const fakeHash = '0x' + Array.from({length: 64}, () => '0123456789abcdef'[Math.floor(Math.random()*16)]).join('');
+    document.getElementById('txResult').innerHTML = `
+      <div class="tx-card">
+        <div class="tx-label">Transaction submitted (mock)</div>
+        <div class="tx-hash">${fakeHash}</div>
+        <div style="margin-top:10px;"><a href="#" onclick="return false;">basescan.org/tx/${fakeHash.slice(0,10)}... →</a></div>
+      </div>
+    `;
+  }, 1400);
+}
+
+function resetFlow() {
+  state = { candidates: [], selected: null, quote: null };
+  document.getElementById('execBtn').disabled = true;
+  document.getElementById('execBtn').textContent = 'Execute for real';
+  document.getElementById('simBtn').textContent = 'Simulate fill (free)';
+  document.getElementById('simResult').innerHTML = '';
+  document.getElementById('txResult').innerHTML = '';
+  setStep(1);
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "payung",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Say what you're afraid of losing. Get a real floor under it, on Base mainnet.",
+  "scripts": {
+    "book": "tsx src/cli.ts book",
+    "quote": "tsx src/cli.ts quote",
+    "simulate": "tsx src/cli.ts simulate",
+    "execute": "tsx src/cli.ts execute",
+    "whoami": "tsx src/cli.ts whoami"
+  },
+  "dependencies": {
+    "@thetanuts-finance/thetanuts-client": "^0.3.0",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}

@@ -1,0 +1,17 @@
+# SECURITY — never commit these. This file exists BEFORE your first commit.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+wallet.json
+keystore/
+
+node_modules/
+dist/
+.next/
+out/
+build/
+*.log
+.DS_Store
+.tsbuildinfo

@@ -14,6 +14,7 @@
 import 'dotenv/config';
 import { ethers } from 'ethers';
 import { ThetanutsClient } from '@thetanuts-finance/thetanuts-client';
+import { impliedStrike, type ProtectionSpec } from './spec.js';
 
 export const BASE_CHAIN_ID = 8453;
 export const USDC_DECIMALS = 6;
@@ -80,7 +81,12 @@ export async function priceScale(client: ThetanutsClient): Promise<number> {
 }
 
 /** Collateral is NOT always USDC — the book also quotes WETH and cbBTC. */
-const _decCache = new Map<string, number>();
+const _decCache = new Map<string, number>([
+  ['0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', 6], // USDC
+  ['0x4e65fe4dba92790696d040ac24aa414708f5c0ab', 6], // aBasUSDC
+  ['0x4200000000000000000000000000000000000006', 18], // WETH
+  ['0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf', 8], // cbBTC
+]);
 export async function collateralDecimals(client: ThetanutsClient, token: string) {
   const key = token.toLowerCase();
   if (!_decCache.has(key)) {
@@ -128,14 +134,8 @@ export async function getBook(client = readClient()): Promise<Candidate[]> {
   );
 }
 
-export type ProtectionSpec = {
-  /** 'ETH' | 'BTC' — what the user holds. */
-  asset: 'ETH' | 'BTC';
-  /** The floor the user wants under their asset, in USD. */
-  floorUsd: number;
-  /** How long they need protection, in days. */
-  horizonDays: number;
-};
+export type { ProtectionSpec } from './spec.js';
+export { impliedStrike } from './spec.js';
 
 export type FilterConfig = {
   /** Lowercase collateral-token addresses treated as dollar-denominated (USDC, aBasUSDC). */
@@ -188,11 +188,20 @@ export function coverageGapDays(c: Candidate, spec: ProtectionSpec): number {
 }
 
 /** ERC20 symbol, cached per token address. */
-const _symCache = new Map<string, string>();
+const _symCache = new Map<string, string>([
+  ['0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', 'USDC'],
+  ['0x4e65fe4dba92790696d040ac24aa414708f5c0ab', 'aBasUSDC'],
+  ['0x4200000000000000000000000000000000000006', 'WETH'],
+  ['0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf', 'cbBTC'],
+]);
 export async function tokenSymbol(client: ThetanutsClient, token: string): Promise<string> {
   const key = token.toLowerCase();
   if (!_symCache.has(key)) {
-    _symCache.set(key, await client.erc20.getSymbol(token));
+    try {
+      _symCache.set(key, await client.erc20.getSymbol(token));
+    } catch {
+      _symCache.set(key, 'UNKNOWN');
+    }
   }
   return _symCache.get(key)!;
 }
@@ -259,21 +268,48 @@ export async function findCandidates(
   });
 }
 
-/** Cap a requested spend to what the maker can still absorb. Never silent: the flag travels to the UI. */
+/**
+ * Cap a requested spend to what the maker can still absorb. Never silent: the
+ * flag travels to the UI.
+ *
+ * `makerBudget` is denominated in COLLATERAL dollars, not premium dollars —
+ * for a cash-secured put the SDK's own rule is `maxContracts = makerBudget /
+ * strike` (OptionBookModule.calculateMaxContracts), and the actual premium
+ * ceiling is `maxContracts × pricePerContract`. That ceiling is smaller than
+ * makerBudget by roughly strike/price (often ~1-2 orders of magnitude) —
+ * comparing requestedUsdc directly to makerBudget under-caps by that same
+ * factor and lets a fill silently settle for far less than requested.
+ */
 export function capSpend(
   requestedUsdc: number,
-  makerBudget: number
+  makerBudget: number,
+  strike: number,
+  pricePerContract: number
 ): { spendUsdc: number; capped: boolean } {
-  if (requestedUsdc <= makerBudget) return { spendUsdc: requestedUsdc, capped: false };
-  return { spendUsdc: makerBudget, capped: true };
+  const maxPremiumUsdc = (makerBudget / strike) * pricePerContract;
+  if (requestedUsdc <= maxPremiumUsdc) return { spendUsdc: requestedUsdc, capped: false };
+  return { spendUsdc: maxPremiumUsdc, capped: true };
 }
 
-/** Refuse to send against an order that expires within the buffer. The fix is a fresh quote, so say so. */
+/**
+ * Refuse to send against an order that expires within the buffer. The fix is
+ * a fresh quote, so say so.
+ *
+ * Checks the EARLIER of two distinct expiries: the option's own expiry (when
+ * the contract itself lapses) and the maker order's `orderExpiryTimestamp`
+ * (when the maker's signed quote itself goes stale — typically minutes, not
+ * weeks). Only the option expiry survives `findCandidates()`'s horizon
+ * filter, so checking it alone leaves the order-level staleness window
+ * completely unguarded.
+ */
 export function assertFillable(c: Candidate, nowSec: number, bufferSec = 60): void {
-  const expirySec = Math.floor(c.expiry.getTime() / 1000);
+  const optionExpirySec = Math.floor(c.expiry.getTime() / 1000);
+  const orderExpiryRaw = c.raw?.rawApiData?.orderExpiryTimestamp;
+  const orderExpirySec = orderExpiryRaw !== undefined ? Number(orderExpiryRaw) : optionExpirySec;
+  const expirySec = Math.min(optionExpirySec, orderExpirySec);
   if (expirySec <= nowSec + bufferSec) {
     throw new Error(
-      `Order expires at ${c.expiry.toISOString()} — too close to send safely. Re-quote and pick a fresh candidate.`
+      `Order expires at ${new Date(expirySec * 1000).toISOString()} — too close to send safely. Re-quote and pick a fresh candidate.`
     );
   }
 }
@@ -305,6 +341,8 @@ export type Quote = {
   pricePerContract: number;
   /** What you actually pay or receive, in USDC. */
   premiumUsdc: number;
+  /** Real contract count, decoded from preview.numContracts (6-decimal-scaled per SDK). */
+  contracts: number;
   strike: number;
   expiry: Date;
   yourSide: Candidate['yourSide'];
@@ -312,25 +350,33 @@ export type Quote = {
 };
 
 /**
- * Price a fill. Synchronous SDK call — this is the SDK's own collateral math,
- * which is why the docs warn that for puts and spreads
- * "contract count is NOT the same as premium".
+ * Price a fill. Synchronous SDK call — this is the SDK's own collateral math.
+ *
+ * GOTCHA (confirmed against the SDK source): `previewFillOrder`'s
+ * `totalCollateral` field is just an echo of the `usdcAmount` you passed in —
+ * it is NOT strike × contracts, and it does not reflect maker-side clamping.
+ * The real contract count is `preview.numContracts`, which the SDK docs
+ * state is "6 decimals for USDC collateral" — i.e. divide by 1e6, not by
+ * strike. Deriving contracts from collateral/strike (the previous approach
+ * here) produced numbers off by roughly strike/price.
  */
 export async function quote(
   candidate: Candidate,
   requestedUsdc: number,
   client = readClient()
 ): Promise<Quote> {
-  const { spendUsdc, capped } = capSpend(requestedUsdc, candidate.makerBudget);
+  const { spendUsdc, capped } = capSpend(
+    requestedUsdc,
+    candidate.makerBudget,
+    candidate.strike,
+    candidate.pricePerContract
+  );
   const amount = BigInt(Math.round(spendUsdc * 10 ** USDC_DECIMALS));
   const preview: any = client.optionBook.previewFillOrder(candidate.raw, amount);
   const scale = await priceScale(client);
 
   const pricePerContract = Number(preview.pricePerContract) / scale;
-  // numContracts is scaled such that, for a cash-secured put,
-  // collateral ≈ strike × contracts. Derive contracts from that identity
-  // rather than assuming a decimal count.
-  const contracts = Number(preview.totalCollateral) / 10 ** USDC_DECIMALS / candidate.strike;
+  const contracts = Number(preview.numContracts) / 10 ** USDC_DECIMALS;
 
   return {
     requestedUsdc,
@@ -341,6 +387,7 @@ export async function quote(
     maxContracts: String(preview.maxContracts),
     pricePerContract,
     premiumUsdc: pricePerContract * contracts,
+    contracts,
     strike: candidate.strike,
     expiry: candidate.expiry,
     yourSide: candidate.yourSide,
@@ -351,9 +398,13 @@ export async function quote(
 /**
  * Simulate the REAL transaction without spending anything.
  *
- * This is the most useful call in the whole SDK for you: it runs the actual
- * fill against current chain state and reverts if it would fail. Build the
- * entire product against this. Spend real money once, on camera.
+ * GOTCHA (confirmed against the SDK source): `callStaticFillOrder` does NOT
+ * throw when the fill would revert — it catches internally and resolves
+ * `{ success: false, error, ... }`. Treating "the promise resolved" as "the
+ * fill would succeed" makes this function report success unconditionally,
+ * which is worse than not calling it at all: every caller (CLI, web UI,
+ * `preflight`, and `execute()`'s own pre-send guard) would believe a doomed
+ * fill is safe to send. Must read `result.success`.
  */
 export async function simulate(
   candidate: Candidate,
@@ -363,6 +414,9 @@ export async function simulate(
   const amount = BigInt(Math.round(collateralUsdc * 10 ** USDC_DECIMALS));
   try {
     const result = await client.optionBook.callStaticFillOrder(candidate.raw, amount);
+    if (!result?.success) {
+      return { ok: false, result, error: result?.error?.message ?? 'callStaticFillOrder reported failure' };
+    }
     return { ok: true, result };
   } catch (e: any) {
     return { ok: false, error: e?.shortMessage || e?.message || String(e) };
@@ -378,25 +432,38 @@ export async function execute(
   spendUsdc: number,
   client = writeClient()
 ): Promise<{ hash: string; explorer: string; receipt: any; paidUnits: bigint; paidUsd: number | null }> {
+  const dec = await collateralDecimals(client, candidate.collateralToken);
+  if (dec !== USDC_DECIMALS) {
+    // Every code path below assumes 6-decimal dollar collateral (USDC_DECIMALS).
+    // A dollar-token with different decimals would silently mis-scale amounts
+    // by the ratio — fail loudly instead.
+    throw new Error(
+      `${candidate.collateralToken} has ${dec} decimals, not the assumed ${USDC_DECIMALS}. Refusing to guess the scale.`
+    );
+  }
   const amount = BigInt(Math.round(spendUsdc * 10 ** USDC_DECIMALS));
 
   // Spec edge case: the order can expire between quoting and confirming.
   assertFillable(candidate, Math.floor(Date.now() / 1000));
 
-  // Fail loudly before spending gas if the fill would revert.
-  const sim = await simulate(candidate, spendUsdc, client);
-  if (!sim.ok) throw new Error(`Simulation failed, refusing to send: ${sim.error}`);
-
   // Approve THIS order's collateral token, not a hardcoded USDC address.
+  // Must happen BEFORE simulate(): callStaticFillOrder's transferFrom needs
+  // the allowance in place to reflect the fill we're actually about to send.
+  // Simulating first (against zero allowance) would report every fresh
+  // wallet's first-ever fill as "would revert".
   await client.erc20.ensureAllowance(
     candidate.collateralToken,
-    client.chainConfig.contracts.optionBook,
+    client.getContractAddress('optionBook'),
     amount
   );
 
+  // Fail loudly before spending the fill's gas if it would still revert.
+  const sim = await simulate(candidate, spendUsdc, client);
+  if (!sim.ok) throw new Error(`Simulation failed, refusing to send: ${sim.error}`);
+
   const receipt: any = await client.optionBook.fillOrder(candidate.raw, amount);
   const rec = receipt?.receipt ?? receipt;
-  const hash = rec?.hash ?? rec?.transactionHash ?? String(receipt);
+  const hash: string | undefined = rec?.hash ?? rec?.transactionHash;
 
   // CRITICAL: fillOrder() has already landed on-chain at this point. Everything
   // below is best-effort bookkeeping ("what did we pay?"), never grounds to
@@ -405,11 +472,12 @@ export async function execute(
   // duplicate real-money retry. If we can't determine the paid amount, we
   // report it as unknown (paidUsd: null) rather than as an error.
   const me = await client.getSignerAddress();
-  const dec = await collateralDecimals(client, candidate.collateralToken);
   const paidUnits = sumDebits(rec?.logs ?? [], candidate.collateralToken, me);
   return {
-    hash,
-    explorer: `https://basescan.org/tx/${hash}`,
+    hash: hash ?? 'unknown',
+    explorer: hash
+      ? `https://basescan.org/tx/${hash}`
+      : 'hash unknown — the fill landed on-chain but the receipt shape was unrecognized; check BaseScan for your wallet address',
     receipt,
     paidUnits,
     paidUsd: paidUnits === 0n ? null : Number(paidUnits) / 10 ** dec,
@@ -419,7 +487,7 @@ export async function execute(
 /** Payoff curve for the UI. Pure math — no network, no LLM. */
 export function payoffCurve(q: Quote, spotRange: [number, number], points = 60) {
   const [lo, hi] = spotRange;
-  const contracts = q.collateralUsdc / q.strike;
+  const { contracts } = q;
   const youBuy = q.yourSide === 'you buy the option';
   const out: { spot: number; pnl: number }[] = [];
   for (let i = 0; i <= points; i++) {

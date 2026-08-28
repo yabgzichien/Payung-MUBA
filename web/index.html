@@ -252,12 +252,21 @@
   </header>
 
   <div class="mock-banner">
-    PROTOTYPE — candidates below are illustrative, sampled from a real Base mainnet orderbook capture. Nothing here spends real money.
+    LIVE — every candidate below is a real, currently-fillable order on Base mainnet, priced by the protocol's own math. Execute spends real USDC.
   </div>
 
   <!-- STEP 1: constraint -->
   <div class="step active" id="step1">
     <div class="step-label"><span class="step-num">1</span> State what you're afraid of losing</div>
+    <div class="field" style="margin-bottom:12px;">
+      <label>Say it in your own words — the AI fills the form; it never invents a price</label>
+      <div style="display:flex; gap:8px;">
+        <input id="nl" type="text" style="flex:1; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; color:var(--text); font-size:14px;"
+               placeholder='e.g. "I have 1 ETH and need it worth at least $2,300 in two weeks"' />
+        <button class="btn secondary" id="nlBtn" onclick="parseNL()">Parse</button>
+      </div>
+      <div id="nlError" style="color:var(--danger); font-size:12px; margin-top:6px;"></div>
+    </div>
     <div class="field-row">
       <div class="field">
         <label>Asset you hold</label>
@@ -325,17 +334,18 @@
 </div>
 
 <script>
-// ---- Mock data, shaped like the real PROJECT.md pricing table ----
-const PRICING_TABLE = [
-  { strike: 2080, pct: 15, premium: 3.04 },
-  { strike: 2150, pct: 12, premium: 5.07 },
-  { strike: 2200, pct: 10, premium: 7.97 },
-  { strike: 2250, pct: 8,  premium: 12.50 },
-  { strike: 2300, pct: 6,  premium: 19.94 },
-  { strike: 2350, pct: 4,  premium: 30.96 },
-];
-const SPOT = 2450;
 let state = { candidates: [], selected: null, quote: null };
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  return json;
+}
 
 function restateSentence() {
   const asset = document.getElementById('asset').value;
@@ -349,6 +359,26 @@ function restateSentence() {
   document.getElementById(id).addEventListener('input', restateSentence)
 );
 
+async function parseNL() {
+  const text = document.getElementById('nl').value.trim();
+  const err = document.getElementById('nlError');
+  const btn = document.getElementById('nlBtn');
+  err.textContent = '';
+  if (!text) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+  try {
+    const { spec } = await api('/api/parse', { text });
+    document.getElementById('asset').value = spec.asset;
+    document.getElementById('floor').value = spec.floorUsd;
+    document.getElementById('days').value = spec.horizonDays;
+    restateSentence();
+  } catch (e) {
+    err.textContent = e.message; // includes the honest "not a protection request" refusals
+  } finally {
+    btn.disabled = false; btn.textContent = 'Parse';
+  }
+}
+
 function setStep(n) {
   for (let i = 1; i <= 4; i++) {
     const el = document.getElementById('step' + i);
@@ -358,155 +388,154 @@ function setStep(n) {
   }
 }
 
-function findFloors() {
-  const floor = Number(document.getElementById('floor').value);
+function currentSpec() {
+  return {
+    asset: document.getElementById('asset').value,
+    floorUsd: Number(document.getElementById('floor').value),
+    horizonDays: Number(document.getElementById('days').value),
+  };
+}
+
+async function findFloors() {
   setStep(2);
   document.getElementById('candLoading').style.display = 'block';
   document.getElementById('candidateList').style.display = 'none';
   document.getElementById('candVerdict').style.display = 'none';
-
-  // simulate network latency of a real fetchOrders() call
-  setTimeout(() => {
-    // rank the mock book by distance to requested floor, like findCandidates() does
-    const ranked = [...PRICING_TABLE].sort((a,b) => Math.abs(a.strike-floor) - Math.abs(b.strike-floor)).slice(0,5);
-    state.candidates = ranked;
-    renderCandidates(ranked, floor);
+  try {
+    const { candidates } = await api('/api/candidates', { spec: currentSpec() });
+    state.candidates = candidates;
     document.getElementById('candLoading').style.display = 'none';
+    if (!candidates.length) {
+      const v = document.getElementById('candVerdict');
+      v.style.display = 'block';
+      v.innerHTML = '<b>No fillable structure matches that constraint right now.</b> That is the honest answer — nothing on the live book fits, and Payung never substitutes a near-miss silently. Try a different floor or window.';
+      return;
+    }
+    renderCandidates(candidates);
     document.getElementById('candidateList').style.display = 'flex';
-  }, 900);
+  } catch (e) {
+    document.getElementById('candLoading').textContent = 'Error: ' + e.message;
+  }
 }
 
-function renderCandidates(list, floor) {
+function renderCandidates(list) {
   const el = document.getElementById('candidateList');
   el.innerHTML = '';
   list.forEach((c, i) => {
-    const pctOfProtection = ((c.premium / c.strike) * 100).toFixed(2);
     const div = document.createElement('div');
     div.className = 'candidate';
     div.onclick = () => selectCandidate(i, div);
+    const gapBadge = c.coverageGapDays > 0.25
+      ? `<span class="badge warn">ends ${c.coverageGapDays.toFixed(1)}d early</span>` : '';
+    const bestBadge = i === 0 ? '<span class="badge good">closest match</span>' : '';
     div.innerHTML = `
       <div>
-        <div class="strike">$${c.strike.toLocaleString()} floor
-          ${c.strike === closest(list, floor) ? '<span class="badge good">closest match</span>' : ''}
-        </div>
-        <div class="meta">${c.pct}% below spot ($${SPOT.toLocaleString()}) · 8.7d window · put, buyable</div>
+        <div class="strike">$${c.strike.toLocaleString()} floor ${bestBadge}${gapBadge}</div>
+        <div class="meta">${c.daysToExpiry.toFixed(1)}d window · exp ${c.expiryIso.slice(0,10)} · put, buyable · iv ${c.iv ? c.iv.toFixed(2) : '—'}</div>
       </div>
       <div class="premium">
-        <div class="amount">$${c.premium.toFixed(2)}</div>
-        <div class="label">premium</div>
+        <div class="amount">$${c.pricePerContract.toFixed(2)}</div>
+        <div class="label">premium / contract</div>
       </div>
     `;
     el.appendChild(div);
   });
-  // auto-pick the closest match
-  const closestIdx = list.findIndex(c => c.strike === closest(list, floor));
-  selectCandidate(closestIdx >= 0 ? closestIdx : 0, el.children[closestIdx >= 0 ? closestIdx : 0]);
-}
-function closest(list, floor) {
-  return list.reduce((a,b) => Math.abs(a.strike-floor) < Math.abs(b.strike-floor) ? a : b).strike;
+  selectCandidate(0, el.children[0]);
 }
 
-function selectCandidate(i, el) {
+async function selectCandidate(i, el) {
   document.querySelectorAll('.candidate').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
-  const c = state.candidates[i];
-  state.selected = c;
-
-  const pctOfValue = ((c.premium / c.strike) * 100);
+  state.selected = state.candidates[i];
   const verdict = document.getElementById('candVerdict');
   verdict.style.display = 'block';
-  if (pctOfValue > 8) {
-    verdict.innerHTML = `<b>Judgment call:</b> this premium is ${pctOfValue.toFixed(1)}% of the value protected — getting expensive relative to how close it sits to spot. Still your call, but a floor further from spot (e.g. $2,150) costs a lot less.`;
-  } else {
-    verdict.innerHTML = `<b>Judgment call:</b> premium is ${pctOfValue.toFixed(1)}% of the value protected — reasonable for how close this floor sits to spot ($${SPOT.toLocaleString()}).`;
+  verdict.innerHTML = '<span class="spinner"></span> pricing with previewFillOrder()...';
+  try {
+    const spend = 10; // demo size; a ~$1 fill scores the same per the builder docs
+    const data = await api('/api/quote', { id: state.selected.id, spendUsdc: spend });
+    state.quote = data;
+    verdict.innerHTML = `<b>Agent verdict: ${data.judgment.verdict.replace(/-/g, ' ')}.</b> ` +
+      data.judgment.reasons.map(r => r).join(' ');
+    setStep(3);
+    drawPayoff(data);
+    const q = data.quote;
+    const capNote = q.capped
+      ? ` (capped — this maker can only absorb $${q.spendUsdc.toFixed(2)} of your requested $${q.requestedUsdc.toFixed(2)})` : '';
+    document.getElementById('payoffSummary').innerHTML =
+      `You spend <b>$${q.spendUsdc.toFixed(2)}</b>${capNote} — that is your maximum loss; nothing more can ever be taken. ` +
+      `If the price is below <b>$${q.strike.toLocaleString()}</b> at expiry (${q.expiryIso.slice(0,10)}), the contract pays you the difference in cash — your real coins are never sold. ` +
+      `If it stays above, the contract expires and you are out the premium — but your coins are worth more anyway.`;
+  } catch (e) {
+    verdict.innerHTML = 'Quote failed: ' + e.message;
   }
-
-  buildQuote(c);
-  setStep(3);
-  drawPayoff(c);
 }
 
-function buildQuote(c) {
-  state.quote = { strike: c.strike, premium: c.premium };
-  const days = document.getElementById('days').value || 14;
-  document.getElementById('payoffSummary').innerHTML =
-    `If ETH is below <b>$${c.strike.toLocaleString()}</b> at expiry, the contract pays you the difference — your real ETH is never sold. ` +
-    `If ETH stays above it, the contract expires worthless and you're out the <b>$${c.premium.toFixed(2)}</b> premium — but your ETH is worth more anyway.`;
-}
-
-function drawPayoff(c) {
+function drawPayoff(data) {
   const svg = document.getElementById('payoffChart');
   const W = 600, H = 260, PAD = 40;
-  const lo = c.strike * 0.85, hi = c.strike * 1.15;
-  const amount = Number(document.getElementById('amount').value) || 1;
-
-  const xScale = spot => PAD + ((spot - lo) / (hi - lo)) * (W - 2*PAD);
-  // pnl relative to holding, scaled per 1 unit of asset for visual clarity
-  const contracts = amount; // simplification for the mock
-  const maxAbs = Math.max(c.premium * contracts, (c.strike - lo) * contracts) * 1.1;
-  const yScale = pnl => H/2 - (pnl / maxAbs) * (H/2 - 20);
-
-  const N = 40;
-  let protectedPts = [], unprotectedPts = [];
-  for (let i = 0; i <= N; i++) {
-    const spot = lo + (hi - lo) * i / N;
-    const intrinsic = Math.max(0, c.strike - spot) * contracts;
-    const protectedPnl = intrinsic - c.premium * contracts; // just the put's PnL (bought put)
-    const unprotectedPnl = 0; // baseline reference (holding alone = no hedge pnl)
-    protectedPts.push([xScale(spot), yScale(protectedPnl)]);
-    unprotectedPts.push([xScale(spot), yScale(unprotectedPnl)]);
-  }
-  const toPath = pts => 'M ' + pts.map(p => p.map(v=>v.toFixed(1)).join(',')).join(' L ');
-
+  const pts = data.payoff; // [{spot, pnl}] from the protocol's own math — never computed in the UI
+  const strike = data.quote.strike;
+  const lo = pts[0].spot, hi = pts[pts.length - 1].spot;
+  const maxAbs = Math.max(...pts.map(p => Math.abs(p.pnl))) * 1.1 || 1;
+  const xS = s => PAD + ((s - lo) / (hi - lo)) * (W - 2 * PAD);
+  const yS = p => H / 2 - (p / maxAbs) * (H / 2 - 20);
+  const path = 'M ' + pts.map(p => `${xS(p.spot).toFixed(1)},${yS(p.pnl).toFixed(1)}`).join(' L ');
   svg.innerHTML = `
     <line x1="${PAD}" y1="${H/2}" x2="${W-PAD}" y2="${H/2}" stroke="#232838" stroke-width="1"/>
-    <line x1="${xScale(c.strike)}" y1="20" x2="${xScale(c.strike)}" y2="${H-20}" stroke="#3a4256" stroke-dasharray="4,4" stroke-width="1"/>
-    <text x="${xScale(c.strike)}" y="14" fill="#8892a6" font-size="11" text-anchor="middle" font-family="monospace">strike $${c.strike}</text>
-    <path d="${toPath(unprotectedPts)}" fill="none" stroke="#8892a6" stroke-width="1.5" stroke-dasharray="3,3"/>
-    <path d="${toPath(protectedPts)}" fill="none" stroke="#4fd1a5" stroke-width="2.5"/>
+    <line x1="${xS(strike)}" y1="20" x2="${xS(strike)}" y2="${H-20}" stroke="#3a4256" stroke-dasharray="4,4" stroke-width="1"/>
+    <text x="${xS(strike)}" y="14" fill="#8892a6" font-size="11" text-anchor="middle" font-family="monospace">strike $${strike}</text>
+    <line x1="${PAD}" y1="${yS(0)}" x2="${W-PAD}" y2="${yS(0)}" stroke="#8892a6" stroke-width="1.5" stroke-dasharray="3,3"/>
+    <path d="${path}" fill="none" stroke="#4fd1a5" stroke-width="2.5"/>
     <text x="${PAD}" y="${H-6}" fill="#8892a6" font-size="10" font-family="monospace">$${lo.toFixed(0)}</text>
     <text x="${W-PAD}" y="${H-6}" fill="#8892a6" font-size="10" font-family="monospace" text-anchor="end">$${hi.toFixed(0)}</text>
   `;
 }
 
-function goToExecute() {
-  setStep(4);
-}
+function goToExecute() { setStep(4); }
 
-function runSimulate() {
+async function runSimulate() {
   const btn = document.getElementById('simBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>simulating callStaticFillOrder()...';
+  btn.innerHTML = '<span class="spinner"></span>callStaticFillOrder()...';
   document.getElementById('simResult').innerHTML = '';
-
-  setTimeout(() => {
-    btn.disabled = false;
-    btn.textContent = 'Re-simulate';
+  try {
+    const sim = await api('/api/simulate', { id: state.selected.id, spendUsdc: state.quote.quote.spendUsdc });
     const el = document.createElement('div');
-    el.className = 'sim-result ok';
-    el.textContent = `✓ would succeed — order fillable for $${(state.quote.premium).toFixed(2)} premium against strike $${state.quote.strike}`;
-    document.getElementById('simResult').innerHTML = '';
+    el.className = 'sim-result' + (sim.ok ? ' ok' : '');
+    el.textContent = sim.ok
+      ? `✓ the real transaction would succeed against current chain state — nothing was spent to learn this`
+      : `✗ would revert: ${sim.error} — nothing was spent`;
     document.getElementById('simResult').appendChild(el);
-    document.getElementById('execBtn').disabled = false;
-  }, 1100);
+    document.getElementById('execBtn').disabled = !sim.ok;
+  } catch (e) {
+    document.getElementById('simResult').textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Re-simulate';
+  }
 }
 
-function runExecute() {
+async function runExecute() {
+  const q = state.quote.quote;
+  if (!confirm(`Spend $${q.spendUsdc.toFixed(2)} of real USDC on Base mainnet to buy this floor?`)) return;
   const btn = document.getElementById('execBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>sending fillOrder()...';
-
-  setTimeout(() => {
+  btn.innerHTML = '<span class="spinner"></span>fillOrder() on Base mainnet...';
+  try {
+    const res = await api('/api/execute', { id: state.selected.id, spendUsdc: q.spendUsdc, confirm: true });
     btn.textContent = 'Executed ✓';
-    const fakeHash = '0x' + Array.from({length: 64}, () => '0123456789abcdef'[Math.floor(Math.random()*16)]).join('');
     document.getElementById('txResult').innerHTML = `
       <div class="tx-card">
-        <div class="tx-label">Transaction submitted (mock)</div>
-        <div class="tx-hash">${fakeHash}</div>
-        <div style="margin-top:10px;"><a href="#" onclick="return false;">basescan.org/tx/${fakeHash.slice(0,10)}... →</a></div>
+        <div class="tx-label">Real transaction on Base mainnet — you paid $${res.paidUsd.toFixed(2)} (read from Transfer logs)</div>
+        <div class="tx-hash">${res.hash}</div>
+        <div style="margin-top:10px;"><a href="${res.explorer}" target="_blank" rel="noopener">${res.explorer} →</a></div>
       </div>
     `;
-  }, 1400);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Execute for real';
+    document.getElementById('txResult').innerHTML =
+      `<div class="sim-result">✗ ${e.message}</div>`;
+  }
 }
 
 function resetFlow() {
@@ -517,7 +546,7 @@ function resetFlow() {
   document.getElementById('simResult').innerHTML = '';
   document.getElementById('txResult').innerHTML = '';
   setStep(1);
-  window.scrollTo({top:0, behavior:'smooth'});
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 </script>
 </body>

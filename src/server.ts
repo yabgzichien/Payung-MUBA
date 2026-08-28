@@ -24,6 +24,15 @@ const WEB_ROOT = join(process.cwd(), 'web');
 /** Candidates from the latest search, by id. One user, one demo — a Map is the right size. */
 const cache = new Map<string, { candidate: Candidate; spec: ProtectionSpec }>();
 
+/**
+ * Marks an error as caused by bad client input (a malformed spec, a stale
+ * candidate id) rather than a genuine server/RPC failure. The top-level
+ * route(...).catch() below checks for this to pick 400 vs 500 — without it,
+ * every thrown error looked like a 500, and a caller couldn't tell "fix your
+ * request" from "the server broke" by status code alone.
+ */
+class ClientError extends Error {}
+
 export function candidateId(c: Candidate): string {
   return `${String(c.raw?.signature ?? '0x').slice(2, 18)}-${Math.round(c.strike)}`;
 }
@@ -63,7 +72,7 @@ function send(res: ServerResponse, status: number, body: unknown) {
 
 function getCached(id: string) {
   const entry = cache.get(id);
-  if (!entry) throw new Error('Unknown or stale candidate id — search again.');
+  if (!entry) throw new ClientError('Unknown or stale candidate id — search again.');
   return entry;
 }
 
@@ -97,7 +106,14 @@ async function route(req: IncomingMessage, res: ServerResponse) {
 
   if (req.method === 'POST' && url === '/api/candidates') {
     const body = await readBody(req);
-    const spec = validateSpec(body.spec);
+    let spec: ProtectionSpec;
+    try {
+      spec = validateSpec(body.spec);
+    } catch (e: any) {
+      // validateSpec's own throws are about a malformed client-supplied spec,
+      // never a server/RPC problem — re-tag so the caller gets 400, not 500.
+      throw new ClientError(e?.message ?? String(e));
+    }
     const candidates = await findCandidates(spec);
     cache.clear();
     for (const c of candidates) cache.set(candidateId(c), { candidate: c, spec });
@@ -153,7 +169,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
 if (process.argv[1] && process.argv[1].endsWith('server.ts')) {
   createServer((req, res) => {
     route(req, res).catch((e: any) =>
-      send(res, 500, { error: e?.shortMessage || e?.message || String(e) })
+      send(res, e instanceof ClientError ? 400 : 500, { error: e?.shortMessage || e?.message || String(e) })
     );
   }).listen(PORT, () => {
     console.log(`Payung running at http://localhost:${PORT} — BASE MAINNET, real orders.`);

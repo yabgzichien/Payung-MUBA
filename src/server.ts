@@ -79,6 +79,13 @@ export function jsonSafe(v: unknown): string {
 }
 
 function readBody(req: IncomingMessage): Promise<any> {
+  if ((req as any).body !== undefined) {
+    const b = (req as any).body;
+    if (typeof b === 'string') {
+      try { return Promise.resolve(b ? JSON.parse(b) : {}); } catch { return Promise.reject(new Error('Invalid JSON body')); }
+    }
+    return Promise.resolve(b ?? {});
+  }
   return new Promise((resolve, reject) => {
     let data = '';
     req.on('data', (chunk) => (data += chunk));
@@ -143,7 +150,7 @@ async function serveStatic(url: string, res: ServerResponse) {
   }
 }
 
-async function route(req: IncomingMessage, res: ServerResponse) {
+export async function route(req: IncomingMessage, res: ServerResponse) {
   const url = (req.url ?? '/').split('?')[0];
 
   if (req.method === 'POST') {

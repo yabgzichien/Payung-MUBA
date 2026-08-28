@@ -1,12 +1,23 @@
 # SECURITY — never commit these. This file exists BEFORE your first commit.
 .env
 .env.*
+.env.local
 !.env.example
 *.key
 *.pem
 wallet.json
 keystore/
 
+# PDF files
+*.pdf
+
+# Workshop and audit docs
+workshop-gonka-router.html
+FableAudit.md
+FableAudit*.md
+HANDOFF.md
+
+# Dependencies and build outputs
 node_modules/
 dist/
 .next/
@@ -16,5 +27,9 @@ build/
 .DS_Store
 .tsbuildinfo
 
+# Tooling and IDE scratch
 .worktrees/
 .superpowers/
+.claude/
+.vercel/
+

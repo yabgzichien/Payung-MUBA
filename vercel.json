@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/ethers.min.js",
+      "destination": "/web/ethers.min.js"
+    },
+    {
+      "source": "/",
+      "destination": "/web/index.html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/web/$1"
+    }
+  ]
+}

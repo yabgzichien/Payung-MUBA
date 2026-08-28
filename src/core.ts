@@ -198,17 +198,40 @@ export async function tokenSymbol(client: ThetanutsClient, token: string): Promi
 }
 
 /**
+ * Base mainnet addresses confirmed by direct on-chain symbol()/decimals() calls
+ * during this branch's live verification (see task-2-report.md). Not a
+ * replacement for live discovery below — a defense-in-depth allowlist so a
+ * spoofed ERC20 whose symbol() merely ENDS in "USDC" can't pass as trusted
+ * dollar collateral by address-match alone.
+ */
+const KNOWN_DOLLAR_TOKENS = new Set([
+  '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // USDC on Base mainnet
+  '0x4e65fe4dba92790696d040ac24aa414708f5c0ab', // aBasUSDC (Aave Base USDC) — the live book's buyable-put collateral
+]);
+
+/**
  * Which collateral tokens in this book are dollar-denominated?
  * Discovered from the live book by symbol (USDC, aBasUSDC), never hardcoded —
  * the book has changed its quoting token before and can again.
+ *
+ * Tradeoff: an exact-address match (allowlist, or the SDK's own known-USDC
+ * address) is trusted outright; a bare symbol()-suffix match is kept ONLY as a
+ * fallback for tokens not yet in the allowlist, so the book can still add new
+ * dollar-denominated collateral over time without a code change — at the cost
+ * of trusting an unverified ERC20's self-reported symbol for those tokens.
  */
 export async function dollarTokens(
   client: ThetanutsClient,
   book: Candidate[]
 ): Promise<Set<string>> {
   const distinct = [...new Set(book.map((c) => c.collateralToken.toLowerCase()))];
+  const allowlist = new Set(KNOWN_DOLLAR_TOKENS);
+  const canonicalUsdc = client.chainConfig?.tokens?.USDC?.address?.toLowerCase();
+  if (canonicalUsdc) allowlist.add(canonicalUsdc);
+
   const out = new Set<string>();
   for (const t of distinct) {
+    if (allowlist.has(t)) { out.add(t); continue; }
     const sym = await tokenSymbol(client, t);
     if (sym.toUpperCase().endsWith('USDC')) out.add(t);
   }
@@ -354,7 +377,7 @@ export async function execute(
   candidate: Candidate,
   spendUsdc: number,
   client = writeClient()
-): Promise<{ hash: string; explorer: string; receipt: any; paidUnits: bigint; paidUsd: number }> {
+): Promise<{ hash: string; explorer: string; receipt: any; paidUnits: bigint; paidUsd: number | null }> {
   const amount = BigInt(Math.round(spendUsdc * 10 ** USDC_DECIMALS));
 
   // Spec edge case: the order can expire between quoting and confirming.
@@ -375,21 +398,21 @@ export async function execute(
   const rec = receipt?.receipt ?? receipt;
   const hash = rec?.hash ?? rec?.transactionHash ?? String(receipt);
 
-  // The empirical answer to "who posts what": read what actually left the wallet.
+  // CRITICAL: fillOrder() has already landed on-chain at this point. Everything
+  // below is best-effort bookkeeping ("what did we pay?"), never grounds to
+  // throw — a throw here would tell the caller the fill failed when in fact a
+  // real, irreversible on-chain transaction just succeeded, inviting a
+  // duplicate real-money retry. If we can't determine the paid amount, we
+  // report it as unknown (paidUsd: null) rather than as an error.
   const me = await client.getSignerAddress();
   const dec = await collateralDecimals(client, candidate.collateralToken);
   const paidUnits = sumDebits(rec?.logs ?? [], candidate.collateralToken, me);
-  if (paidUnits === 0n) {
-    throw new Error(
-      `Fill succeeded (tx ${hash}) but could not determine the amount paid from receipt logs — check https://basescan.org/tx/${hash} manually before reporting a max-loss figure.`
-    );
-  }
   return {
     hash,
     explorer: `https://basescan.org/tx/${hash}`,
     receipt,
     paidUnits,
-    paidUsd: Number(paidUnits) / 10 ** dec,
+    paidUsd: paidUnits === 0n ? null : Number(paidUnits) / 10 ** dec,
   };
 }
 

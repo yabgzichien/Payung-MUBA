@@ -48,7 +48,11 @@ describe('sumDebits', () => {
 describe('execute() paid-amount verification', () => {
   const ME = '0x1111111111111111111111111111111111111111';
 
-  it('throws instead of silently reporting paidUsd=0 when the receipt has no matching Transfer log', async () => {
+  it('never throws once fillOrder() has landed — reports paidUsd: null instead when the receipt has no matching Transfer log', async () => {
+    // CRITICAL: fillOrder() already succeeded here. Throwing would tell the
+    // caller the fill failed when a real on-chain transaction just landed —
+    // that's how a demo invites a duplicate real-money click. The correct
+    // behavior is to report the fill as successful with an unknown paid amount.
     const c = makeCandidate({ collateralToken: ABAS_USDC });
     const fakeClient: any = {
       optionBook: {
@@ -63,8 +67,9 @@ describe('execute() paid-amount verification', () => {
       chainConfig: { contracts: { optionBook: '0x0000000000000000000000000000000000000b' } },
     };
 
-    await expect(execute(c, 10, fakeClient)).rejects.toThrow(
-      /could not determine the amount paid/i
-    );
+    const res = await execute(c, 10, fakeClient);
+    expect(res.hash).toBe('0xdeadbeef');
+    expect(res.paidUnits).toBe(0n);
+    expect(res.paidUsd).toBeNull();
   });
 });

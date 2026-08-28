@@ -51,6 +51,13 @@ options), underlying-asset filter, maker-budget capping (never silent), order-st
 guard, free `callStaticFillOrder()` before every real send, exact-amount approvals,
 automatic USDC→aBasUSDC Aave deposit when an order needs it.
 
+**Wallet requirement, precisely:** browsing the live book, asking in plain language,
+viewing candidates, and getting a quote + payoff chart all work with zero wallet
+setup. Simulating a fill and executing one both require a funded burner wallet's
+`PRIVATE_KEY` in `.env` — even the "free" simulate step calls `callStaticFillOrder()`,
+which needs a signer address to run against, so it is free of cost but not free of
+wallet setup.
+
 ## Architecture
 
 One core (`src/core.ts`) is the only module that touches Thetanuts. The CLI (`src/cli.ts`),

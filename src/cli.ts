@@ -1,12 +1,16 @@
 /**
  * Day 1 CLI. Get a real transaction hash before you write a single line of UI.
  *
- *   npm run book                      # what's live right now
- *   npm run quote -- 2400 10          # price a $2400 floor with 10 USDC
- *   npm run whoami                    # check your burner wallet balances
- *   npm run deposit -- 12             # top up aBasUSDC via Aave if short
- *   npm run simulate -- 2400 10       # FREE dry run of the real transaction
- *   npm run execute -- 2400 10        # spends real USDC on Base mainnet
+ *   npm run book                        # what's live right now
+ *   npm run quote -- 2400 10 14         # price a $2400 floor with 10 USDC, 14d horizon (default 14)
+ *   npm run whoami                      # check your burner wallet balances
+ *   npm run deposit -- 12               # top up aBasUSDC via Aave if short
+ *   npm run simulate -- 2400 10 14      # FREE dry run of the real transaction
+ *   npm run execute -- 2400 10 14       # spends real USDC on Base mainnet
+ *
+ * horizonDays is optional on quote/simulate/execute and defaults to 14 — the
+ * same default `preflight` uses, so a candidate vetted with `preflight` is the
+ * same candidate `execute` will pick, given the same floor.
  */
 
 import 'dotenv/config';
@@ -72,8 +76,12 @@ async function main() {
       const amountUsdc = Number(args[0] ?? 15);
       const client = writeClient();
       const book = await getBook(client);
-      const target = book.find((c) => !c.isCall && !c.makerIsBuyer);
-      if (!target) { console.log('No buyable puts on the book to read a collateral token from.'); return; }
+      // Run buyable puts through the SAME dollar-collateral filter findCandidates()
+      // uses, not the raw book — otherwise this can pick a WETH/cbBTC-collateralized
+      // order and crash into planDeposit's generic "no auto-deposit path" reason.
+      const dollarSet = await dollarTokens(client, book);
+      const target = book.find((c) => !c.isCall && !c.makerIsBuyer && dollarSet.has(c.collateralToken.toLowerCase()));
+      if (!target) { console.log('No buyable, dollar-collateralized puts on the book to read a collateral token from.'); return; }
       const dec = await collateralDecimals(client, target.collateralToken);
       const units = BigInt(Math.round(amountUsdc * 10 ** dec));
       console.log(`Ensuring ${amountUsdc} of ${target.collateralToken} (the live book's buyable-put collateral)...`);
@@ -87,8 +95,9 @@ async function main() {
     case 'execute': {
       const floorUsd = Number(args[0] ?? 2400);
       const collateral = Number(args[1] ?? 10);
+      const horizonDays = Number(args[2] ?? 14);
 
-      const spec = { asset: 'ETH', floorUsd, horizonDays: 7 } as const;
+      const spec = { asset: 'ETH' as const, floorUsd, horizonDays };
       const candidates = await findCandidates(spec, readClient());
       if (!candidates.length) {
         console.log('No fillable structure matches that constraint right now.');
@@ -146,7 +155,11 @@ async function main() {
       console.log('\n*** SPENDING REAL USDC ON BASE MAINNET ***');
       const res = await execute(pick, q.spendUsdc);
       console.log(`\n  tx    ${res.hash}`);
-      console.log(`  paid  ${usd(res.paidUsd)}  <- read from Transfer logs; this is the max-loss number to say on stage`);
+      console.log(
+        res.paidUsd === null
+          ? `  paid  UNKNOWN — verify the debit on BaseScan before reporting a max-loss figure`
+          : `  paid  ${usd(res.paidUsd)}  <- read from Transfer logs; this is the max-loss number to say on stage`
+      );
       console.log(`  ->    ${res.explorer}\n`);
       console.log('Put that URL on screen during the pitch.\n');
       break;
@@ -195,9 +208,9 @@ async function main() {
     default:
       console.log('commands: book | whoami | deposit | quote | simulate | execute | preflight | ask');
       console.log('  npm run book');
-      console.log('  npm run quote -- 2400 10');
-      console.log('  npm run simulate -- 2400 10');
-      console.log('  npm run execute -- 2400 10');
+      console.log('  npm run quote -- 2400 10 14');
+      console.log('  npm run simulate -- 2400 10 14');
+      console.log('  npm run execute -- 2400 10 14');
       console.log('  npm run deposit -- 12');
       console.log('  npm run preflight -- 2300 14');
       console.log('  npm run ask -- "I have 1 ETH and need it worth at least $2,300 in two weeks"');

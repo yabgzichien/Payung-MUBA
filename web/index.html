@@ -523,19 +523,41 @@ async function runExecute() {
   try {
     const res = await api('/api/execute', { id: state.selected.id, spendUsdc: q.spendUsdc, confirm: true });
     btn.textContent = 'Executed ✓';
+    const paidLine = res.paidUsd === null
+      ? 'paid: could not be determined automatically — verify the debit on BaseScan'
+      : `you paid $${res.paidUsd.toFixed(2)} (read from Transfer logs)`;
     document.getElementById('txResult').innerHTML = `
       <div class="tx-card">
-        <div class="tx-label">Real transaction on Base mainnet — you paid $${res.paidUsd.toFixed(2)} (read from Transfer logs)</div>
+        <div class="tx-label">Real transaction on Base mainnet — ${paidLine}</div>
         <div class="tx-hash">${res.hash}</div>
         <div style="margin-top:10px;"><a href="${res.explorer}" target="_blank" rel="noopener">${res.explorer} →</a></div>
       </div>
     `;
   } catch (e) {
-    btn.disabled = false;
+    // CRITICAL: we cannot tell here whether this failure happened BEFORE the
+    // transaction was sent (safe to retry immediately) or AFTER (a real fill
+    // may already be on-chain — an immediate re-arm invites a duplicate
+    // real-money click). So we never silently re-enable the button. The user
+    // must explicitly confirm they've checked BaseScan before retrying.
     btn.textContent = 'Execute for real';
-    document.getElementById('txResult').innerHTML =
-      `<div class="sim-result">✗ ${e.message}</div>`;
+    document.getElementById('txResult').innerHTML = `
+      <div class="sim-result">
+        <div>✗ ${e.message}</div>
+        <div style="margin-top:10px;">Something may have gone wrong AFTER a transaction was sent.
+          Check <a href="https://basescan.org" target="_blank" rel="noopener">BaseScan</a>
+          for a recent transaction from your wallet before clicking Execute again.</div>
+        <button class="btn secondary" style="margin-top:10px;" onclick="rearmExecute()">I've checked, let me retry</button>
+      </div>
+    `;
   }
+}
+
+/** Explicit, user-driven re-arm after an /api/execute failure — see runExecute()'s catch block. */
+function rearmExecute() {
+  const btn = document.getElementById('execBtn');
+  btn.disabled = false;
+  btn.textContent = 'Execute for real';
+  document.getElementById('txResult').innerHTML = '';
 }
 
 function resetFlow() {

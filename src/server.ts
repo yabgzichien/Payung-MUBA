@@ -171,7 +171,7 @@ if (process.argv[1] && process.argv[1].endsWith('server.ts')) {
     route(req, res).catch((e: any) =>
       send(res, e instanceof ClientError ? 400 : 500, { error: e?.shortMessage || e?.message || String(e) })
     );
-  }).listen(PORT, () => {
+  }).listen(PORT, '127.0.0.1', () => {
     console.log(`Payung running at http://localhost:${PORT} — BASE MAINNET, real orders.`);
   });
 }

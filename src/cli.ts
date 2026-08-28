@@ -152,6 +152,30 @@ async function main() {
       break;
     }
 
+    case 'preflight': {
+      // Run minutes before the demo: is the pipeline alive, and which candidates are actually fillable RIGHT NOW?
+      const spec = {
+        asset: 'ETH' as const,
+        floorUsd: Number(args[0] ?? 2300),
+        horizonDays: Number(args[1] ?? 14),
+      };
+      const t0 = Date.now();
+      const candidates = await findCandidates(spec);
+      console.log(`\nbook+filter latency ${Date.now() - t0}ms · ${candidates.length} candidates for $${spec.floorUsd}/${spec.horizonDays}d`);
+      if (!candidates.length) { console.log('NO CANDIDATES — adjust the demo constraint before going on stage.'); return; }
+      for (const c of candidates.slice(0, 3)) {
+        const sim = await simulate(c, 10);
+        const gap = coverageGapDays(c, spec);
+        console.log(
+          `  strike ${usd(c.strike)} exp ${c.expiry.toISOString().slice(0, 10)}` +
+          `${gap > 0.25 ? ` (ends ${gap.toFixed(1)}d early)` : ''}: ` +
+          (sim.ok ? '✓ fillable right now' : `✗ ${sim.error}`)
+        );
+      }
+      console.log('\nUse the top ✓ candidate on stage; the other two are your fallbacks.\n');
+      break;
+    }
+
     case 'ask': {
       // npm run ask -- "I have 1 ETH and need it worth at least $2,300 in two weeks"
       const text = args.join(' ');
@@ -169,12 +193,13 @@ async function main() {
     }
 
     default:
-      console.log('commands: book | whoami | deposit | quote | simulate | execute | ask');
+      console.log('commands: book | whoami | deposit | quote | simulate | execute | preflight | ask');
       console.log('  npm run book');
       console.log('  npm run quote -- 2400 10');
       console.log('  npm run simulate -- 2400 10');
       console.log('  npm run execute -- 2400 10');
       console.log('  npm run deposit -- 12');
+      console.log('  npm run preflight -- 2300 14');
       console.log('  npm run ask -- "I have 1 ETH and need it worth at least $2,300 in two weeks"');
   }
 }

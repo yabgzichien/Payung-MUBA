@@ -9,6 +9,7 @@
     "quote": "tsx src/cli.ts quote",
     "simulate": "tsx src/cli.ts simulate",
     "execute": "tsx src/cli.ts execute",
+    "preflight": "tsx src/cli.ts preflight",
     "whoami": "tsx src/cli.ts whoami",
     "deposit": "tsx src/cli.ts deposit",
     "ask": "tsx src/cli.ts ask",

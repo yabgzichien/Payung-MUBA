@@ -845,6 +845,10 @@ async function selectCandidate(i, el) {
   state.selected = state.candidates[i];
   const verdict = document.getElementById('candVerdict');
   verdict.style.display = 'block';
+  // Clear any severity class from the PREVIOUS candidate. Without this the
+  // spinner — and a "Quote failed" error — inherit the last verdict's colour,
+  // so a failed quote can render inside a green "reasonable" box.
+  verdict.className = 'verdict';
   verdict.innerHTML = '<span class="spinner"></span> pricing with previewFillOrder()...';
   try {
     const heldAmount = Math.max(0.0001, Number(document.getElementById('amount').value) || 1);
@@ -1045,8 +1049,6 @@ function renderUnifiedChart(data, history, historyDays) {
   // X: history occupies the left ~70%, future (now -> expiry) the right ~30%.
   const historyFrac = 0.7;
   const xHistory = t => PAD_L + ((t - historyStartMs) / Math.max(1, nowMs - historyStartMs)) * (plotW * historyFrac);
-  const xFuture = t => PAD_L + plotW * historyFrac + ((t - nowMs) / Math.max(1, expiryMs - nowMs)) * (plotW * (1 - historyFrac));
-  const xForTime = t => (t <= nowMs ? xHistory(t) : xFuture(t));
   const xNow = PAD_L + plotW * historyFrac;
   const xExpiry = PAD_L + plotW;
 

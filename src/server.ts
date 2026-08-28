@@ -19,7 +19,7 @@ import {
 import { parseIntent, gonkaLlm, validateSpec } from './intent.js';
 import { judgeQuote } from './judgment.js';
 import { ensureDollarCollateral } from './aave.js';
-import { fetchHistory, fetchSpot } from './spot.js';
+import { fetchHistory, fetchSpot, type Candle } from './spot.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const WEB_ROOT = join(process.cwd(), 'web');
@@ -30,9 +30,45 @@ const cache = new Map<string, { candidate: Candidate; spec: ProtectionSpec; fetc
 /** A candidate older than this is refused rather than quoted/filled against — the live book moves. */
 const CACHE_MAX_AGE_MS = 3 * 60 * 1000;
 
-/** Price history is expensive to refetch on every render tick — 60s is fresh enough for a chart. */
-const historyCache = new Map<string, { body: any; fetchedAt: number }>();
+/**
+ * Price history is expensive to refetch on every render tick — 60s is fresh
+ * enough for a chart. Spot and candles are cached SEPARATELY and only when
+ * each individually succeeds: they come from different providers with
+ * different failure modes, and caching one combined body meant a candles
+ * success plus a spot failure cached nothing at all, so every subsequent
+ * render re-hammered the rate-limited RPC that just failed.
+ */
+const spotCache = new Map<string, { spot: SpotReading; fetchedAt: number }>();
+const candleCache = new Map<string, { candles: Candle[]; fetchedAt: number }>();
 const HISTORY_CACHE_MS = 60 * 1000;
+
+type SpotReading = { price: number; updatedAt: string; feed: string };
+
+/**
+ * Whether this process may sign with the server's own PRIVATE_KEY.
+ *
+ * SECURITY — this exists because `vercel.json` routes every path to this
+ * module and the platform invokes the exported `handler` directly, which
+ * completely bypasses the `.listen(PORT, '127.0.0.1')` bind below. That bind
+ * was the ONLY thing protecting `/api/execute` — an unauthenticated endpoint
+ * that spends real USDC on Base mainnet from the server's burner wallet
+ * (Aave deposit + fillOrder). Publicly routed, `confirm:true` is not a
+ * security control: any caller can supply it, and `/api/candidates` hands out
+ * the ids needed to do it.
+ *
+ * Neither `/api/execute` nor `/api/simulate` has any caller today — the web
+ * UI executes through `/api/prepare-tx` and the user's OWN connected wallet,
+ * and the CLI calls core.execute() directly. So the safe default is off, and
+ * a direct `npm run web` (which does bind to localhost) re-enables them.
+ */
+let localDirectRun = false;
+function serverSigningAllowed(): boolean {
+  return localDirectRun || process.env.PAYUNG_ALLOW_SERVER_SIGNING === 'true';
+}
+const SERVER_SIGNING_REFUSAL =
+  'Server-side signing is disabled on this deployment. This endpoint spends real funds from the ' +
+  'server wallet and is only available when the server is bound to localhost (npm run web). ' +
+  'Use POST /api/prepare-tx and sign with your own wallet instead.';
 
 /**
  * Marks an error as caused by bad client input (a malformed spec, a stale
@@ -224,6 +260,10 @@ export async function route(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (req.method === 'POST' && url === '/api/simulate') {
+    // Uses the server's PRIVATE_KEY (callStaticFillOrder needs a signer
+    // address). Read-only, but gated with /api/execute so there is exactly one
+    // rule for "routes that touch the server wallet" — see serverSigningAllowed.
+    if (!serverSigningAllowed()) return send(res, 403, { error: SERVER_SIGNING_REFUSAL });
     const { id, spendUsdc } = await readBody(req);
     const { candidate } = getCached(String(id));
     const q = await quote(candidate, parseSpend(spendUsdc));
@@ -316,6 +356,11 @@ export async function route(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (req.method === 'POST' && url === '/api/execute') {
+    // MUST come before every other check: this route moves real money from the
+    // server's own wallet with no authentication, and the localhost bind that
+    // used to be its only protection does not apply when this module is
+    // invoked as a serverless handler. See serverSigningAllowed.
+    if (!serverSigningAllowed()) return send(res, 403, { error: SERVER_SIGNING_REFUSAL });
     const { id, spendUsdc, confirm } = await readBody(req);
     if (confirm !== true) return send(res, 400, { error: 'Set confirm:true — this spends real USDC on Base mainnet.' });
     const { candidate } = getCached(String(id));
@@ -342,39 +387,53 @@ export async function route(req: IncomingMessage, res: ServerResponse) {
       return send(res, 400, { error: 'asset must be ETH or BTC' });
     }
     const days = Math.min(90, Math.max(1, Number(params.get('days') ?? 14)));
-    const key = `${asset}:${days}`;
-    const cached = historyCache.get(key);
-    if (cached && Date.now() - cached.fetchedAt < HISTORY_CACHE_MS) {
-      return send(res, 200, cached.body);
-    }
+    const now = Date.now();
 
+    // Spot is cached per ASSET (it does not vary with the history window), so
+    // one good read serves every day-count for the next 60s. Candles are cached
+    // per asset+days. Each is stored only on its own success, so a spot failure
+    // can no longer throw away a perfectly good candle fetch — and vice versa.
     const client = readClient();
-    let spot: { price: number; updatedAt: string; feed: string } | null = null;
+    let spot: SpotReading | null = null;
     let spotError: string | null = null;
-    try {
-      const feed = client.chainConfig.priceFeeds[asset];
-      if (!feed) throw new Error(`No price feed configured for ${asset}`);
-      // client.provider and client.chainConfig are public typed fields on
-      // ThetanutsClient — no cast needed. Reading them here (rather than
-      // inside spot.ts) is what keeps spot.ts free of the SDK.
-      spot = await fetchSpot(feed, client.provider);
-    } catch (e: any) {
-      spotError = e?.shortMessage || e?.message || String(e);
-      console.error('fetchSpot failed:', spotError);
+    const cachedSpot = spotCache.get(asset);
+    if (cachedSpot && now - cachedSpot.fetchedAt < HISTORY_CACHE_MS) {
+      spot = cachedSpot.spot;
+    } else {
+      try {
+        const feed = client.chainConfig.priceFeeds[asset];
+        if (!feed) throw new Error(`No price feed configured for ${asset}`);
+        // client.provider and client.chainConfig are public typed fields on
+        // ThetanutsClient — no cast needed. Reading them here (rather than
+        // inside spot.ts) is what keeps spot.ts free of the SDK.
+        spot = await fetchSpot(feed, client.provider);
+        spotCache.set(asset, { spot, fetchedAt: Date.now() });
+      } catch (e: any) {
+        spotError = e?.shortMessage || e?.message || String(e);
+        console.error('fetchSpot failed:', spotError);
+      }
     }
 
-    let candles: Awaited<ReturnType<typeof fetchHistory>> = [];
+    let candles: Candle[] = [];
     let historySource: 'coinbase-exchange' | null = null;
     let historyError: string | null = null;
-    try {
-      candles = await fetchHistory(asset, days);
+    const candleKey = `${asset}:${days}`;
+    const cachedCandles = candleCache.get(candleKey);
+    if (cachedCandles && now - cachedCandles.fetchedAt < HISTORY_CACHE_MS) {
+      candles = cachedCandles.candles;
       historySource = 'coinbase-exchange';
-    } catch (e: any) {
-      historyError = e?.message || String(e);
-      console.error('fetchHistory failed:', historyError);
+    } else {
+      try {
+        candles = await fetchHistory(asset, days);
+        historySource = 'coinbase-exchange';
+        candleCache.set(candleKey, { candles, fetchedAt: Date.now() });
+      } catch (e: any) {
+        historyError = e?.message || String(e);
+        console.error('fetchHistory failed:', historyError);
+      }
     }
 
-    const body = {
+    return send(res, 200, {
       candles,
       spot: spot ? { ...spot, source: 'chainlink' as const } : null,
       historySource,
@@ -384,12 +443,7 @@ export async function route(req: IncomingMessage, res: ServerResponse) {
       // complete. Never a fabricated fallback price.
       spotError,
       historyError,
-    };
-    // Only cache a fully-successful response. Caching a degraded one pins the
-    // failure for 60s — on a flaky RPC that turns one transient into a minute
-    // of missing spot, which is exactly the wrong behavior mid-demo.
-    if (spot && historySource) historyCache.set(key, { body, fetchedAt: Date.now() });
-    return send(res, 200, body);
+    });
   }
 
   if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(url, res);
@@ -406,6 +460,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
 // Only start listening when run directly (so tests can import the pure helpers).
 if (process.argv[1] && process.argv[1].endsWith('server.ts')) {
+  // Reached only by `npm run web`, which binds to 127.0.0.1 below — so the
+  // server wallet is reachable by the local user alone. A serverless invocation
+  // never runs this branch and therefore never enables server-side signing.
+  localDirectRun = true;
   createServer((req, res) => {
     handler(req, res);
   }).listen(PORT, '127.0.0.1', () => {

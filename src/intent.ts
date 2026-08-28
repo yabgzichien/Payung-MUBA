@@ -1,9 +1,12 @@
 /**
  * NL -> ProtectionSpec. The AI's ONLY job in the entire product (FR1).
  *
- * DESIGN RULE (the pitch, enforced in code): the LLM translates a sentence into
- * three fields and nothing else. Every field is strictly validated; every
- * number the user later sees comes from the live book, never from here.
+ * DESIGN RULE (the pitch, enforced in code): the LLM transcribes a sentence
+ * into four fields and nothing else — asset, quantity, floorTotalUsd,
+ * horizonDays. It is explicitly forbidden from dividing or multiplying, so
+ * the per-unit strike a match is ranked against is derived in tested code
+ * (impliedStrike), never by the model. Every field is strictly validated;
+ * every number the user later sees comes from the live book, never from here.
  */
 // From './spec.js', NOT './core.js' — impliedStrike is used at runtime here,
 // and a value import of core.ts would pull dotenv + the Thetanuts SDK into

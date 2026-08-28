@@ -62,9 +62,13 @@ export function granularityFor(days: number): number {
 
 /**
  * Real OHLC history from Coinbase Exchange's public candles endpoint. No API
- * key required. Returns [] on any fetch/parse failure — this is a chart
- * enhancement, never a gate on the trading flow (see server.ts's /api/history
- * route, which degrades to spot-only rather than failing the request).
+ * key required.
+ *
+ * THROWS on a failed fetch rather than returning [] — the caller must be able
+ * to tell "the market genuinely has no candles here" from "the request
+ * failed", because the UI states which one happened. server.ts's /api/history
+ * route catches this, degrades to spot-only, and reports historyError; the
+ * chart is an enhancement and never gates the trading flow.
  */
 export async function fetchHistory(asset: 'ETH' | 'BTC', days: number): Promise<Candle[]> {
   const product = COINBASE_PRODUCT[asset];
@@ -85,6 +89,19 @@ const AGGREGATOR_V3_ABI = [
 ];
 
 /**
+ * A feed's `decimals()` is immutable for the life of the contract, so it is
+ * read once per address and cached forever. This is not a micro-optimisation:
+ * it halves the RPC calls per spot read, and the public Base RPC's rate limit
+ * is what makes spot reads fail (see fetchSpot).
+ */
+const _feedDecimals = new Map<string, number>();
+
+/** Backoff between spot retries, in ms. Immediate retries just hit the same rate-limit window. */
+const SPOT_RETRY_DELAYS_MS = [200, 600, 1500];
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
  * Live spot from the SAME Chainlink feed a candidate's option actually
  * settles against — the caller passes chainConfig.priceFeeds[asset], the
  * identical feed findCandidates() matches candidates on in core.ts. This is
@@ -94,37 +111,52 @@ const AGGREGATOR_V3_ABI = [
  * Takes (feed, provider) rather than a ThetanutsClient so this module stays
  * SDK-free (design rule 1) and testable against a stub provider.
  *
- * Retries once: the public Base RPC (mainnet.base.org) rate-limits under
- * light load and returns "missing revert data" for a call that succeeded
- * moments earlier — observed directly while verifying these feeds. A single
- * cheap retry turns the common transient into a non-event; a persistent
- * failure still surfaces to the caller, which degrades to spot-unavailable
- * rather than inventing a price.
+ * RETRY POLICY, and why it is this aggressive: the default `BASE_RPC_URL`
+ * (https://mainnet.base.org) rate-limits hard under even light sequential
+ * load, failing with "missing revert data" on a call that succeeded moments
+ * earlier. Measured against the live endpoint, a single immediate retry left
+ * a ~58% failure rate — the chart lost its headline number more often than it
+ * showed it. Caching decimals() (halving the calls) plus three retries with
+ * growing backoff is what makes this reliable. A persistent failure still
+ * surfaces to the caller, which degrades to spot-unavailable and says so on
+ * screen rather than inventing a price.
+ *
+ * The real fix for a demo is a dedicated RPC (see docs/demo-runbook.md);
+ * this makes the public endpoint survivable, it does not make it good.
  */
 export async function fetchSpot(
   feed: string,
   provider: ethers.Provider
 ): Promise<{ price: number; updatedAt: string; feed: string }> {
   if (!feed) throw new Error('No price feed address supplied');
+  const key = feed.toLowerCase();
   const aggregator = new ethers.Contract(feed, AGGREGATOR_V3_ABI, provider);
+
   const read = async () => {
-    const [decimals, round] = await Promise.all([
-      aggregator.decimals(),
-      aggregator.latestRoundData(),
-    ]);
-    const price = Number(round.answer) / 10 ** Number(decimals);
+    if (!_feedDecimals.has(key)) {
+      _feedDecimals.set(key, Number(await aggregator.decimals()));
+    }
+    const decimals = _feedDecimals.get(key)!;
+    const round = await aggregator.latestRoundData();
+    const price = Number(round.answer) / 10 ** decimals;
     if (!Number.isFinite(price) || price <= 0) {
       throw new Error(`Feed ${feed} returned an unusable answer: ${round.answer}`);
     }
     return {
       price,
       updatedAt: new Date(Number(round.updatedAt) * 1000).toISOString(),
-      feed: feed.toLowerCase(),
+      feed: key,
     };
   };
-  try {
-    return await read();
-  } catch {
-    return await read(); // one retry — see the rate-limiting note above
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= SPOT_RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) await sleep(SPOT_RETRY_DELAYS_MS[attempt - 1]);
+    try {
+      return await read();
+    } catch (e) {
+      lastError = e;
+    }
   }
+  throw lastError;
 }

@@ -156,6 +156,8 @@ export function filterCandidates(
   spec: ProtectionSpec,
   cfg: FilterConfig
 ): Candidate[] {
+  // Derived once: the per-unit strike this spec's total value + quantity imply.
+  const target = impliedStrike(spec);
   return (
     book
       // A floor under a long asset position is a PUT — the correct instrument,
@@ -172,8 +174,8 @@ export function filterCandidates(
       .filter((c) => cfg.dollarTokens.has(c.collateralToken.toLowerCase()))
       .filter((c) => c.daysToExpiry >= spec.horizonDays * 0.6)
       .filter((c) => c.daysToExpiry <= spec.horizonDays * 2.5)
-      // Prefer strikes near the requested floor.
-      .sort((a, b) => Math.abs(a.strike - spec.floorUsd) - Math.abs(b.strike - spec.floorUsd))
+      // Prefer strikes near the per-unit floor implied by the total value + quantity.
+      .sort((a, b) => Math.abs(a.strike - target) - Math.abs(b.strike - target))
       .slice(0, 8)
   );
 }

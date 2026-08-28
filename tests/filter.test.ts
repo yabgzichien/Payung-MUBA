@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { filterCandidates, type FilterConfig } from '../src/core.js';
 import { makeCandidate, USDC, ABAS_USDC, WETH, FEED_ETH, FEED_BTC } from './fixtures.js';
 
-const spec = { asset: 'ETH' as const, floorUsd: 2300, horizonDays: 14 };
+const spec = { asset: 'ETH' as const, quantity: 1, floorTotalUsd: 2300, horizonDays: 14 };
 const cfg: FilterConfig = { dollarTokens: new Set([USDC, ABAS_USDC]), assetPriceFeed: FEED_ETH };
 
 describe('filterCandidates', () => {
@@ -44,6 +44,18 @@ describe('filterCandidates', () => {
     const out = filterCandidates(book, spec, cfg);
     expect(out).toHaveLength(2);
     expect(out[0].strike).toBe(2290); // closest to 2300 first
+  });
+
+  it('ranks by impliedStrike (floorTotalUsd / quantity), not the raw total', () => {
+    // 2 ETH at a $4600 total floor implies a $2300/ETH strike — the same
+    // ranking as the 1-ETH/$2300 spec above, even though floorTotalUsd differs.
+    const twoEthSpec = { asset: 'ETH' as const, quantity: 2, floorTotalUsd: 4600, horizonDays: 14 };
+    const book = [
+      makeCandidate({ strike: 2100, daysToExpiry: 10 }),
+      makeCandidate({ strike: 2290, daysToExpiry: 10 }),
+    ];
+    const out = filterCandidates(book, twoEthSpec, cfg);
+    expect(out[0].strike).toBe(2290); // closest to implied 2300, not to raw 4600
   });
 
   it('returns at most 8 candidates', () => {

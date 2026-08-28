@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { coverageGapDays } from '../src/core.js';
 import { makeCandidate } from './fixtures.js';
 
-const spec = { asset: 'ETH' as const, floorUsd: 2300, horizonDays: 14 };
+const spec = { asset: 'ETH' as const, quantity: 1, floorTotalUsd: 2300, horizonDays: 14 };
 
 describe('coverageGapDays', () => {
   it('is zero when the option outlives the horizon', () => {

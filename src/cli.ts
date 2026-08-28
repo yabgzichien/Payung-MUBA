@@ -96,12 +96,12 @@ async function main() {
       if (cmd === 'quote') break;
 
       console.log('Simulating the real transaction (free)...');
-      const sim = await simulate(pick, collateral);
+      const sim = await simulate(pick, q.spendUsdc);
       console.log(sim.ok ? '  ✓ would succeed' : `  ✗ would revert: ${sim.error}`);
       if (!sim.ok || cmd === 'simulate') break;
 
       console.log('\n*** SPENDING REAL USDC ON BASE MAINNET ***');
-      const res = await execute(pick, collateral);
+      const res = await execute(pick, q.spendUsdc);
       console.log(`\n  tx    ${res.hash}`);
       console.log(`  paid  ${usd(res.paidUsd)}  <- read from Transfer logs; this is the max-loss number to say on stage`);
       console.log(`  ->    ${res.explorer}\n`);

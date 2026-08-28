@@ -365,6 +365,11 @@ export async function execute(
   const me = await client.getSignerAddress();
   const dec = await collateralDecimals(client, candidate.collateralToken);
   const paidUnits = sumDebits(rec?.logs ?? [], candidate.collateralToken, me);
+  if (paidUnits === 0n) {
+    throw new Error(
+      `Fill succeeded (tx ${hash}) but could not determine the amount paid from receipt logs — check https://basescan.org/tx/${hash} manually before reporting a max-loss figure.`
+    );
+  }
   return {
     hash,
     explorer: `https://basescan.org/tx/${hash}`,

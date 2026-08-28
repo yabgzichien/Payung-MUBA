@@ -16,6 +16,7 @@ import {
   simulate, execute, payoffCurve, USDC_DECIMALS, coverageGapDays,
   collateralDecimals, dollarTokens, tokenSymbol,
 } from './core.js';
+import { judgeQuote } from './judgment.js';
 import { ensureDollarCollateral } from './aave.js';
 import { parseIntent, gonkaLlm } from './intent.js';
 
@@ -123,6 +124,10 @@ async function main() {
       const curve = payoffCurve(q, [q.strike * 0.85, q.strike * 1.15], 6);
       console.log(`\npayoff:`);
       curve.forEach((p) => console.log(`  spot ${usd(p.spot).padEnd(10)} pnl ${usd(p.pnl)}`));
+
+      const j = judgeQuote(q, gap);
+      console.log(`\nagent verdict: ${j.verdict.toUpperCase()}`);
+      j.reasons.forEach((r) => console.log(`  · ${r}`));
 
       console.log(`\nMAX LOSS (you buy): what leaves your wallet today, and nothing more —`);
       console.log(`the exact debit is read from the fill receipt's Transfer logs on execute.\n`);

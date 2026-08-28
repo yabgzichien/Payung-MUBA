@@ -12,7 +12,7 @@ import 'dotenv/config';
 import { ethers } from 'ethers';
 import {
   readClient, writeClient, getBook, findCandidates, quote,
-  simulate, execute, payoffCurve, USDC_DECIMALS,
+  simulate, execute, payoffCurve, USDC_DECIMALS, coverageGapDays,
 } from './core.js';
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -58,10 +58,8 @@ async function main() {
       const floorUsd = Number(args[0] ?? 2400);
       const collateral = Number(args[1] ?? 10);
 
-      const candidates = await findCandidates(
-        { asset: 'ETH', floorUsd, horizonDays: 7 },
-        readClient()
-      );
+      const spec = { asset: 'ETH', floorUsd, horizonDays: 7 } as const;
+      const candidates = await findCandidates(spec, readClient());
       if (!candidates.length) {
         console.log('No fillable structure matches that constraint right now.');
         console.log('(This is the correct answer. Do not let the agent improvise one.)');
@@ -72,6 +70,13 @@ async function main() {
       candidates.forEach(show);
 
       const pick = candidates[0];
+      const gap = coverageGapDays(pick, spec);
+      if (gap > 0.25) {
+        console.log(
+          `\n⚠ COVERAGE GAP: this floor ends ${pick.expiry.toISOString().slice(0, 10)} — ` +
+          `${gap.toFixed(1)} days BEFORE your stated deadline. After that date you are unprotected.`
+        );
+      }
       const q = await quote(pick, collateral, readClient());
 
       console.log(`\n── Quote ────────────────────────────────`);

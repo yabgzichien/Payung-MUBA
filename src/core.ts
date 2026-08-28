@@ -173,6 +173,15 @@ export function filterCandidates(
   );
 }
 
+/**
+ * How many days short of the user's stated deadline this option's protection
+ * ends. > 0 means the floor evaporates BEFORE the date the user asked for —
+ * allowed, but it must be surfaced loudly, never silently (FR/audit attack 4).
+ */
+export function coverageGapDays(c: Candidate, spec: ProtectionSpec): number {
+  return Math.max(0, spec.horizonDays - c.daysToExpiry);
+}
+
 /** ERC20 symbol, cached per token address. */
 const _symCache = new Map<string, string>();
 export async function tokenSymbol(client: ThetanutsClient, token: string): Promise<string> {

@@ -94,11 +94,13 @@ There's no moment where you "choose" to sell. It settles automatically based on 
 | | Stop-loss | This (a put option) |
 |---|---|---|
 | **Mechanism** | Places a real sell order when price is hit | Pays out based on a price comparison at a deadline |
-| **In a fast crash** | Can fill far below your trigger price if the order book is thin (common in crypto) — this happens constantly | Floor holds exactly, because it's computed, not executed into a live market |
+| **In a fast crash** | Can fill far below your trigger price if the order book is thin (common in crypto) — this happens constantly | The floor is computed at the deadline, not executed into a live market — it cannot slip. But it protects a **date**, not the path: a mid-window dip that recovers by expiry pays nothing |
+| **What's protected** | The path — continuously, but only best-effort | One date — exactly. Real constraints have dates: tuition due, loan due |
+| **What it costs** | Free to place | A premium, paid upfront (roughly 5–10% of protected value near the money — see the pricing table) |
 | **If price recovers right after** | You already sold — you're in cash, watching the recovery without you | You still hold your ETH the whole time — you participate in any recovery |
 | **Your real coins** | Actually sold | Never touched |
 
-The one-sentence version: *a stop-loss is a best-effort order that can miss its own price in a fast crash and takes you out of your position; a put option is a contractual floor that holds exactly at the crash's worst moment and lets you keep your upside if it recovers.*
+The one-sentence version: *a stop-loss is a best-effort order that can miss its own price in a fast crash and takes you out of your position; a put option is a contractual floor that is computed exactly at your deadline — it costs a premium and protects a date rather than the path, and you keep your asset and its upside the whole time.*
 
 ---
 
@@ -166,7 +168,7 @@ The LLM (via Gonka Router, OpenAI-compatible) is only ever used to translate a s
 - **Only ~20% of the book is buyable** by a retail taker — the rest has the market maker as buyer, meaning the counterparty side is you selling, not buying protection. This must be filtered explicitly (`order.isBuyer === false`).
 - **`getPriceDecimals()` returns a scale (1e8), not a decimal count** — dividing by it as a decimal count silently zeroes every price. Divide by the value directly.
 - **Collateral is not always USDC.** The live book also quotes `aBasUSDC`, `aBasWETH`, and `cbBTC`. Approvals must target the order's actual `collateralToken`, not a hardcoded address.
-- **No buyable puts are collateralized in raw USDC** — they settle in `aBasUSDC` (Aave-wrapped USDC on Base). Buying protection requires depositing USDC into Aave first. This is a minor extra step, and a genuine positive for the pitch: idle collateral earns Aave yield while it sits.
+- **Buyable-put collateral, re-verified during this hardening pass:** the live book quoted `aBasUSDC` (`0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB`) for buyable puts. `findCandidates()` accepts any dollar-denominated collateral (USDC or aBasUSDC) discovered from the live book by symbol — never a hardcoded address — and the execute path auto-deposits USDC into Aave when an order needs `aBasUSDC` (a genuine positive: idle collateral earns Aave yield while it sits).
 - **`callStaticFillOrder()` simulates the real transaction for free** — build and test the entire flow without spending anything; only the final, on-camera trade should be a real `fillOrder()` call.
 - Minimum viable real trade: **~$10 USDC**, confirmed via `previewFillOrder()` against a live order.
 
@@ -193,8 +195,8 @@ A: Yes, real, pulled from the live Thetanuts orderbook on Base — though the fi
 - [x] Execution core (`src/core.ts`) — read/write client, live book fetch, quote, free simulation, execute, payoff curve
 - [x] CLI for manual verification (`src/cli.ts`) — `book`, `whoami`, `quote`, `simulate`, `execute`
 - [x] Verified against live Base mainnet: real orders, real prices, free simulation working
-- [ ] Aave USDC → aBasUSDC deposit helper (needed since buyable puts settle in aBasUSDC, not raw USDC)
-- [ ] Natural-language intent → constraint parsing (Track 02 face)
-- [ ] Consumer UI: floor picker, payoff chart, plain-language pricing explainer (Track 01 face)
+- [x] Aave USDC → aBasUSDC deposit helper (needed since buyable puts settle in aBasUSDC, not raw USDC)
+- [x] Natural-language intent → constraint parsing (Track 02 face)
+- [x] Consumer UI: floor picker, payoff chart, plain-language pricing explainer (Track 01 face)
 - [ ] First real on-chain fill, executed and recorded (BaseScan hash) — the gate that gets crossed once, on camera
 - [ ] Demo video + README + docs for submission

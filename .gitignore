@@ -32,5 +32,6 @@ build/
 .superpowers/
 .claude/
 .vercel/
+*.zip
+*Design-handoff*
 
-.vercel

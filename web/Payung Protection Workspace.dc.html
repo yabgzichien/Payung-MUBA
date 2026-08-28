@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #17150F; }
+  * { box-sizing: border-box; }
+  a { color: oklch(0.80 0.13 78); text-decoration: none; }
+  a:hover { color: oklch(0.88 0.11 82); text-decoration: underline; }
+  input, textarea, button { font-family: inherit; }
+  ::selection { background: oklch(0.80 0.13 78 / 0.3); }
+  @keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+  @keyframes riseIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+<div style="min-height: 100vh; background: oklch(0.19 0.008 70); color: oklch(0.95 0.006 85); font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased;">
+
+  <header style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 32px; border-bottom: 1px solid oklch(0.30 0.012 70); background: oklch(0.205 0.009 70); position: sticky; top: 0; z-index: 20;">
+    <div style="display: flex; align-items: baseline; gap: 14px;">
+      <span style="font-size: 21px; font-weight: 600; letter-spacing: -0.02em;">Payung</span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.66 0.01 75);">Downside floor, priced live</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid oklch(0.34 0.03 155); border-radius: 999px; background: oklch(0.24 0.02 155);">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.74 0.14 155); animation: pulseDot 2.4s ease-in-out infinite;"></span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; letter-spacing: 0.06em; color: oklch(0.85 0.05 155);">BASE MAINNET · 8453</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px dashed oklch(0.36 0.012 70); border-radius: 999px;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; letter-spacing: 0.06em; color: oklch(0.66 0.01 75);">0x7C4a…9E12 · BURNER</span>
+      </div>
+    </div>
+  </header>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 600px), 1fr)); gap: 0; align-items: start;">
+
+    <main style="padding: 28px 32px 72px; display: flex; flex-direction: column; gap: 14px; max-width: 860px;">
+
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 2px;">
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.62 0.01 75);">Protection request</span>
+        <span style="flex: 1; height: 1px; background: oklch(0.28 0.01 70);"></span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; color: oklch(0.62 0.01 75);">{{ stepLabel }}</span>
+      </div>
+
+      <!-- ── STEP 1 ─────────────────────────────── -->
+      <section style="border: 1px solid oklch(0.30 0.012 70); border-radius: 14px; background: oklch(0.225 0.009 70); overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid oklch(0.28 0.011 70);">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: oklch(0.80 0.13 78); color: oklch(0.22 0.03 78); font-weight: 600;">1</span>
+          <span style="font-weight: 600; font-size: 16.5px; letter-spacing: -0.01em;">Say what you need, in a sentence</span>
+          <span style="flex: 1;"></span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; padding: 4px 9px; border-radius: 5px; background: oklch(0.27 0.02 300); color: oklch(0.80 0.08 300); border: 1px solid oklch(0.35 0.04 300);">LLM · TRANSCRIBE ONLY</span>
+        </div>
+
+        <div style="padding: 22px 20px 20px;">
+          <textarea rows="2" autofocus="{{ true }}" value="{{ sentence }}" onChange="{{ onSentence }}" onKeyDown="{{ onSentenceKey }}" style="width: 100%; resize: none; background: oklch(0.185 0.008 70); border: 1px solid oklch(0.38 0.03 78); border-radius: 12px; padding: 20px 22px; color: oklch(0.97 0.006 85); font-size: 25px; line-height: 1.35; letter-spacing: -0.02em; outline: none;" style-focus="border-color: oklch(0.80 0.13 78);"></textarea>
+
+          <div style="display: flex; align-items: center; gap: 14px; margin-top: 12px;">
+            <span style="font-size: 13.5px; color: oklch(0.66 0.01 75);">Plain words. Press <b style="font-family: 'IBM Plex Mono', monospace; font-weight: 500; color: oklch(0.82 0.01 80);">Enter</b> and the model fills the fields below — never a price.</span>
+            <span style="flex: 1;"></span>
+            <button onClick="{{ onParse }}" style="padding: 13px 26px; border-radius: 10px; border: none; background: oklch(0.80 0.13 78); color: oklch(0.20 0.04 78); font-weight: 600; font-size: 15px; cursor: pointer; white-space: nowrap;" style-hover="background: oklch(0.86 0.12 80);">Read this →</button>
+          </div>
+
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px;">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: oklch(0.60 0.01 75); align-self: center; letter-spacing: 0.06em;">TRY</span>
+            <sc-for list="{{ examples }}" as="ex" hint-placeholder-count="3">
+              <button onClick="{{ ex.pick }}" style="padding: 6px 12px; border-radius: 999px; border: 1px solid oklch(0.33 0.012 70); background: oklch(0.20 0.008 70); color: oklch(0.78 0.01 80); font-size: 13px; cursor: pointer;" style-hover="border-color: oklch(0.55 0.06 78); color: oklch(0.92 0.01 82);">{{ ex.label }}</button>
+            </sc-for>
+          </div>
+
+          <div style="margin-top: 20px; padding-top: 18px; border-top: 1px dashed oklch(0.30 0.012 70);">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.58 0.01 75);">what I understood — edit anything</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 8px;">
+              <label style="display: flex; flex-direction: column; gap: 3px; padding: 9px 12px; border: 1px solid oklch(0.30 0.012 70); border-radius: 8px; background: oklch(0.20 0.008 70);">
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.63 0.01 75);">ASSET</span>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 15.5px; font-weight: 500;">ETH</span>
+              </label>
+              <label style="display: flex; flex-direction: column; gap: 3px; padding: 9px 12px; border: 1px solid oklch(0.30 0.012 70); border-radius: 8px; background: oklch(0.20 0.008 70);">
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.63 0.01 75);">QUANTITY</span>
+                <input value="{{ qtyText }}" onChange="{{ onQty }}" style="background: none; border: none; outline: none; color: oklch(0.96 0.006 85); font-family: 'IBM Plex Mono', monospace; font-size: 15.5px; font-weight: 500; padding: 0; width: 100%;" />
+              </label>
+              <label style="display: flex; flex-direction: column; gap: 3px; padding: 9px 12px; border: 1px solid oklch(0.30 0.012 70); border-radius: 8px; background: oklch(0.20 0.008 70);">
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.63 0.01 75);">FLOOR · PER ETH</span>
+                <input value="{{ unitFloorText }}" onChange="{{ onUnitFloor }}" style="background: none; border: none; outline: none; color: oklch(0.96 0.006 85); font-family: 'IBM Plex Mono', monospace; font-size: 15.5px; font-weight: 500; padding: 0; width: 100%;" />
+              </label>
+              <label style="display: flex; flex-direction: column; gap: 3px; padding: 9px 12px; border: 1px solid oklch(0.30 0.012 70); border-radius: 8px; background: oklch(0.20 0.008 70);">
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.63 0.01 75);">HORIZON · DAYS</span>
+                <input value="{{ daysText }}" onChange="{{ onDays }}" style="background: none; border: none; outline: none; color: oklch(0.96 0.006 85); font-family: 'IBM Plex Mono', monospace; font-size: 15.5px; font-weight: 500; padding: 0; width: 100%;" />
+              </label>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 12px 16px; border-radius: 10px; background: oklch(0.235 0.02 78); border: 1px solid oklch(0.34 0.04 78);">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.75 0.06 78); white-space: nowrap;">DERIVED</span>
+              <span style="font-size: 15px; color: oklch(0.90 0.02 82);">Total floor <b style="font-family: 'IBM Plex Mono', monospace; font-weight: 600;">{{ totalFloorText }}</b> ÷ {{ qtyText }} ETH → implied strike <b style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: oklch(0.84 0.13 78);">{{ impliedStrikeText }}</b></span>
+            </div>
+
+            <p style="margin: 14px 0 0; font-size: 15.5px; color: oklch(0.80 0.01 80); line-height: 1.55; text-wrap: pretty;">{{ restated }}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── STEP 2 ─────────────────────────────── -->
+      <section style="border: 1px solid oklch(0.30 0.012 70); border-radius: 14px; background: oklch(0.225 0.009 70); overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid oklch(0.28 0.011 70);">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: oklch(0.32 0.012 70); color: oklch(0.85 0.01 80); font-weight: 600;">2</span>
+          <span style="font-weight: 600; font-size: 16.5px; letter-spacing: -0.01em;">Live offers that actually match</span>
+          <span style="flex: 1;"></span>
+          <button onClick="{{ toggleNoMatch }}" style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; padding: 5px 10px; border-radius: 5px; background: none; border: 1px solid oklch(0.34 0.012 70); color: oklch(0.68 0.01 78); cursor: pointer;" style-hover="border-color: oklch(0.50 0.03 78);">{{ noMatchToggleLabel }}</button>
+        </div>
+
+        <sc-if value="{{ hasMatches }}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 14px 20px 20px;">
+            <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.62 0.01 75);">
+              <span>fetchOrders() on Base · 141 orders → 8 fillable puts where you are the buyer, ranked by distance to your floor</span>
+            </div>
+
+            <div style="border: 1px solid oklch(0.62 0.11 78); border-radius: 12px; background: oklch(0.235 0.022 78); padding: 18px 20px;">
+              <div style="display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 7px;">
+                  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 500; letter-spacing: -0.02em;">{{ hero.strike }}</span>
+                    <span style="font-size: 15px; color: oklch(0.80 0.02 80);">floor</span>
+                    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; padding: 4px 9px; border-radius: 5px; background: {{ hero.badgeBg }}; color: {{ hero.badgeColor }}; border: 1px solid {{ hero.badgeBorder }};">{{ hero.badge }}</span>
+                  </div>
+                  <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: oklch(0.72 0.01 78);">{{ hero.window }} window · expires {{ hero.expiryFull }} · maker budget {{ hero.budget }}</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 5px; align-items: flex-end; min-width: 160px;">
+                  <span style="font-family: 'IBM Plex Mono', monospace; font-size: 23px; font-weight: 500; letter-spacing: -0.02em;">{{ hero.premium }}</span>
+                  <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: oklch(0.68 0.01 75);">previewFillOrder() · CONFIRMED</span>
+                </div>
+              </div>
+            </div>
+
+            <sc-if value="{{ hasOthers }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ toggleExpanded }}" style="display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; margin-top: 8px; padding: 13px 16px; border-radius: 10px; border: 1px solid oklch(0.30 0.012 70); background: oklch(0.20 0.008 70); color: oklch(0.80 0.01 80); font-size: 14px; cursor: pointer; line-height: 1.5;" style-hover="border-color: oklch(0.46 0.03 78); color: oklch(0.92 0.01 82);">
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: oklch(0.72 0.06 78);">{{ discloseCaret }}</span>
+                <span style="text-wrap: pretty;">{{ discloseSummary }}</span>
+              </button>
+            </sc-if>
+
+            <sc-if value="{{ expanded }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
+                <sc-for list="{{ others }}" as="c" hint-placeholder-count="7">
+                  <div onClick="{{ c.select }}" style="display: grid; grid-template-columns: 16px repeat(auto-fit, minmax(104px, 1fr)); gap: 12px 16px; align-items: center; padding: 12px 16px; border-radius: 10px; cursor: pointer; border: 1px solid oklch(0.29 0.011 70); background: oklch(0.20 0.008 70);" style-hover="border-color: oklch(0.52 0.06 78);">
+                    <span style="width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid oklch(0.42 0.014 70);"></span>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.1em; color: oklch(0.60 0.01 75);">FLOOR</span>
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500;">{{ c.strike }}</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.1em; color: oklch(0.60 0.01 75);">EXPIRY</span>
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: oklch(0.84 0.01 82);">{{ c.expiry }}</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.1em; color: oklch(0.60 0.01 75);">VS YOUR FLOOR</span>
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: {{ c.fitColor }};">{{ c.fit }}</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.1em; color: oklch(0.60 0.01 75);">PREMIUM</span>
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13.5px; color: oklch(0.92 0.006 85);">{{ c.premium }}</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px; text-align: right;">
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.1em; color: oklch(0.60 0.01 75);">IV · BUDGET</span>
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: oklch(0.76 0.01 80);">{{ c.iv }} · {{ c.budget }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ farMiss }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; gap: 12px; margin-top: 10px; padding: 13px 16px; border-radius: 10px; border: 1px solid oklch(0.38 0.055 85); background: oklch(0.245 0.028 85);">
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.84 0.09 85); white-space: nowrap; padding-top: 2px;">FAR MISS</span>
+                <p style="margin: 0; font-size: 14px; color: oklch(0.86 0.03 85); line-height: 1.55; text-wrap: pretty;">{{ farMissBody }}</p>
+              </div>
+            </sc-if>
+
+            <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; padding: 5px 10px; border-radius: 5px; background: oklch(0.20 0.008 70); border: 1px solid oklch(0.30 0.012 70); color: oklch(0.68 0.01 78);">filter · puts only</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; padding: 5px 10px; border-radius: 5px; background: oklch(0.20 0.008 70); border: 1px solid oklch(0.30 0.012 70); color: oklch(0.68 0.01 78);">filter · maker is seller</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; padding: 5px 10px; border-radius: 5px; background: oklch(0.20 0.008 70); border: 1px solid oklch(0.30 0.012 70); color: oklch(0.68 0.01 78);">filter · USD collateral</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; padding: 5px 10px; border-radius: 5px; background: oklch(0.20 0.008 70); border: 1px solid oklch(0.30 0.012 70); color: oklch(0.68 0.01 78);">filter · 0.6×–2.5× horizon</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ noMatches }}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 34px 20px 38px; text-align: center;">
+            <div style="width: 44px; height: 44px; margin: 0 auto 16px; border-radius: 12px; border: 1px dashed oklch(0.42 0.02 70); display: grid; place-items: center;">
+              <span style="width: 12px; height: 12px; transform: rotate(45deg); border: 1.5px solid oklch(0.62 0.01 75);"></span>
+            </div>
+            <div style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 8px;">No live offer fits this constraint right now.</div>
+            <p style="max-width: 460px; margin: 0 auto 18px; font-size: 14.5px; color: oklch(0.74 0.01 78); line-height: 1.55; text-wrap: pretty;">Payung will not substitute the nearest option or estimate a price to fill the gap. The closest book entry was a <b style="font-family: 'IBM Plex Mono', monospace; font-weight: 500;">$1,900</b> put expiring in 41 days — 17% below your floor and outside your window.</p>
+            <div style="display: inline-flex; gap: 8px;">
+              <button onClick="{{ toggleNoMatch }}" style="padding: 9px 16px; border-radius: 8px; border: 1px solid oklch(0.36 0.012 70); background: oklch(0.20 0.008 70); color: oklch(0.88 0.01 82); font-size: 13.5px; cursor: pointer;" style-hover="border-color: oklch(0.52 0.04 78);">Loosen the horizon</button>
+              <button onClick="{{ toggleNoMatch }}" style="padding: 9px 16px; border-radius: 8px; border: 1px solid oklch(0.36 0.012 70); background: oklch(0.20 0.008 70); color: oklch(0.88 0.01 82); font-size: 13.5px; cursor: pointer;" style-hover="border-color: oklch(0.52 0.04 78);">Watch the book for a match</button>
+            </div>
+          </div>
+        </sc-if>
+      </section>
+
+      <!-- ── STEP 3 ─────────────────────────────── -->
+      <section style="border: 1px solid oklch(0.30 0.012 70); border-radius: 14px; background: oklch(0.225 0.009 70); overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid oklch(0.28 0.011 70);">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: oklch(0.32 0.012 70); color: oklch(0.85 0.01 80); font-weight: 600;">3</span>
+          <span style="font-weight: 600; font-size: 16.5px; letter-spacing: -0.01em;">The cost, and whether it's worth it</span>
+          <span style="flex: 1;"></span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; padding: 4px 9px; border-radius: 5px; background: oklch(0.26 0.012 70); color: oklch(0.70 0.01 78); border: 1px solid oklch(0.33 0.012 70);">DETERMINISTIC · NO LLM</span>
+        </div>
+
+        <div style="padding: 20px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: oklch(0.30 0.012 70); border: 1px solid oklch(0.30 0.012 70); border-radius: 11px; overflow: hidden;">
+            <div style="padding: 15px 16px; background: oklch(0.20 0.008 70); display: flex; flex-direction: column; gap: 5px;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.63 0.01 75);">PREMIUM YOU PAY</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.02em;">{{ premiumTotal }}</span>
+              <span style="font-size: 12px; color: oklch(0.66 0.01 75);">{{ premiumPerUnit }} × {{ qtyText }} contracts</span>
+            </div>
+            <div style="padding: 15px 16px; background: oklch(0.20 0.008 70); display: flex; flex-direction: column; gap: 5px;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.63 0.01 75);">MAX LOSS</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.02em;">{{ premiumTotal }}</span>
+              <span style="font-size: 12px; color: oklch(0.66 0.01 75);">the premium, and nothing else</span>
+            </div>
+            <div style="padding: 15px 16px; background: oklch(0.20 0.008 70); display: flex; flex-direction: column; gap: 5px;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.63 0.01 75);">GUARANTEED FLOOR</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.02em; color: oklch(0.84 0.13 78);">{{ floorNetText }}</span>
+              <span style="font-size: 12px; color: oklch(0.66 0.01 75);">net of premium, at expiry</span>
+            </div>
+            <div style="padding: 15px 16px; background: oklch(0.20 0.008 70); display: flex; flex-direction: column; gap: 5px;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.63 0.01 75);">COST OF FLOOR</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.02em;">{{ costPct }}</span>
+              <span style="font-size: 12px; color: oklch(0.66 0.01 75);">of the value protected</span>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 14px; margin-top: 14px; padding: 16px 18px; border-radius: 11px; border: 1px solid {{ verdictBorder }}; background: {{ verdictBg }};">
+            <span style="width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: {{ verdictColor }}; flex: none;"></span>
+            <div>
+              <div style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 5px; color: {{ verdictColor }};">{{ verdictTitle }}</div>
+              <p style="margin: 0; font-size: 14.5px; color: oklch(0.84 0.01 80); line-height: 1.55; text-wrap: pretty;">{{ verdictBody }}</p>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px; margin-top: 10px; padding: 14px 18px; border-radius: 11px; border: 1px dashed oklch(0.34 0.012 70);">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.64 0.01 75); white-space: nowrap; padding-top: 2px;">COVERAGE GAP</span>
+            <p style="margin: 0; font-size: 14px; color: oklch(0.78 0.01 78); line-height: 1.55; text-wrap: pretty;">{{ coverageBody }}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── STEP 4 ─────────────────────────────── -->
+      <section style="border: 1px solid oklch(0.30 0.012 70); border-radius: 14px; background: oklch(0.225 0.009 70); overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid oklch(0.28 0.011 70);">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: oklch(0.32 0.012 70); color: oklch(0.85 0.01 80); font-weight: 600;">4</span>
+          <span style="font-weight: 600; font-size: 16.5px; letter-spacing: -0.01em;">Collateral this order settles in</span>
+          <span style="flex: 1;"></span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; padding: 4px 9px; border-radius: 5px; background: {{ collatPillBg }}; color: {{ collatPillColor }}; border: 1px solid {{ collatPillBorder }};">{{ collatPill }}</span>
+        </div>
+        <div style="padding: 18px 20px;">
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 15px; color: oklch(0.88 0.01 82);">This put settles in <b style="font-family: 'IBM Plex Mono', monospace; font-weight: 500;">aBasUSDC</b> — Aave-wrapped USDC on Base, read off the live order, not assumed.</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: oklch(0.68 0.01 75);">wallet: {{ walletUsdc }} USDC · {{ walletAUsdc }} aBasUSDC · needed: {{ premiumTotal }}</span>
+            </div>
+            <button onClick="{{ onDeposit }}" style="padding: 11px 18px; border-radius: 9px; border: 1px solid oklch(0.40 0.03 78); background: oklch(0.24 0.02 78); color: oklch(0.90 0.06 80); font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap;" style-hover="background: oklch(0.28 0.03 78);">{{ depositLabel }}</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── STEP 5 ─────────────────────────────── -->
+      <section style="border: 1px solid {{ execBorder }}; border-radius: 14px; background: oklch(0.225 0.009 70); overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid oklch(0.28 0.011 70);">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: oklch(0.32 0.012 70); color: oklch(0.85 0.01 80); font-weight: 600;">5</span>
+          <span style="font-weight: 600; font-size: 16.5px; letter-spacing: -0.01em;">Simulate free, then confirm once</span>
+          <span style="flex: 1;"></span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.64 0.01 75);">{{ execStage }}</span>
+        </div>
+
+        <div style="padding: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+            <sc-for list="{{ execLog }}" as="row" hint-placeholder-count="3">
+              <div style="display: grid; grid-template-columns: 20px 1fr auto; gap: 12px; align-items: center; padding: 11px 14px; border-radius: 9px; background: oklch(0.20 0.008 70); border: 1px solid oklch(0.29 0.011 70);">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ row.dot }}; margin-left: 4px;"></span>
+                <span style="font-size: 14px; color: oklch(0.88 0.01 82);">{{ row.label }}</span>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: {{ row.metaColor }};">{{ row.meta }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <label style="display: flex; align-items: center; gap: 11px; padding: 13px 16px; border-radius: 10px; border: 1px solid oklch(0.34 0.012 70); background: oklch(0.20 0.008 70); cursor: pointer; margin-bottom: 14px;">
+            <input type="checkbox" checked="{{ confirmed }}" onChange="{{ onConfirm }}" style="width: 17px; height: 17px; accent-color: oklch(0.74 0.14 155); cursor: pointer;" />
+            <span style="font-size: 14.5px; color: oklch(0.88 0.01 82);">I understand this spends <b style="font-family: 'IBM Plex Mono', monospace; font-weight: 500;">{{ premiumTotal }}</b> of real funds on Base mainnet. <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: oklch(0.66 0.01 75);">confirm: true</span></span>
+          </label>
+
+          <div style="display: flex; gap: 10px;">
+            <button onClick="{{ onSimulate }}" style="flex: 1; padding: 14px; border-radius: 10px; border: 1px solid oklch(0.38 0.012 70); background: oklch(0.22 0.008 70); color: oklch(0.92 0.01 82); font-size: 14.5px; font-weight: 500; cursor: pointer;" style-hover="border-color: oklch(0.55 0.03 78);">Re-run free simulation</button>
+            <button onClick="{{ onExecute }}" style="flex: 1.4; padding: 14px; border-radius: 10px; border: none; background: {{ execBtnBg }}; color: {{ execBtnColor }}; font-size: 14.5px; font-weight: 600; cursor: pointer;" style-hover="filter: brightness(1.08);">{{ execBtnLabel }}</button>
+          </div>
+
+          <sc-if value="{{ executed }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top: 16px; padding: 18px; border-radius: 11px; border: 1px solid oklch(0.38 0.05 155); background: oklch(0.24 0.025 155); animation: riseIn 0.35s ease both;">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.76 0.14 155);"></span>
+                <span style="font-size: 16px; font-weight: 600; color: oklch(0.88 0.08 155); letter-spacing: -0.01em;">Protected. Your ETH never moved.</span>
+              </div>
+              <p style="margin: 0 0 12px; font-size: 14.5px; color: oklch(0.85 0.02 150); line-height: 1.55; text-wrap: pretty;">{{ receiptLine }}</p>
+              <div style="display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 8px; background: oklch(0.19 0.01 155); border: 1px solid oklch(0.32 0.03 155);">
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.70 0.04 155);">TX</span>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: oklch(0.90 0.03 150); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">0x9f3c1ab7e4d0…c72e</span>
+                <span style="flex: 1;"></span>
+                <a href="#0" style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; white-space: nowrap;">verify on BaseScan ↗</a>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ── INSTRUMENT PANEL ─────────────────────────────── -->
+    <aside style="position: sticky; top: 61px; max-height: calc(100vh - 61px); overflow-y: auto; border-left: 1px solid oklch(0.30 0.012 70); background: oklch(0.21 0.009 70); padding: 22px 24px 40px; display: flex; flex-direction: column; gap: 20px;">
+
+      <div>
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px;">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.62 0.01 75);">ETH / USD · {{ daysText }}d history + protection window</span>
+        </div>
+
+        <svg viewBox="0 0 404 268" style="width: 100%; height: auto; display: block; background: oklch(0.185 0.008 70); border: 1px solid oklch(0.29 0.011 70); border-radius: 11px;">
+          <rect x="{{ zone.x }}" y="{{ zone.y }}" width="{{ zone.w }}" height="{{ zone.h }}" fill="oklch(0.72 0.13 155)" opacity="0.12"></rect>
+          <line x1="{{ splitX }}" y1="14" x2="{{ splitX }}" y2="232" stroke="oklch(0.42 0.014 70)" stroke-width="1"></line>
+          <line x1="{{ expiryX }}" y1="14" x2="{{ expiryX }}" y2="232" stroke="oklch(0.55 0.10 155)" stroke-width="1" stroke-dasharray="3 3"></line>
+          <sc-for list="{{ candles }}" as="c" hint-placeholder-count="40">
+            <g>
+              <line x1="{{ c.cx }}" y1="{{ c.hy }}" x2="{{ c.cx }}" y2="{{ c.ly }}" stroke="{{ c.color }}" stroke-width="1" opacity="0.75"></line>
+              <rect x="{{ c.x }}" y="{{ c.by }}" width="{{ c.w }}" height="{{ c.bh }}" fill="{{ c.color }}"></rect>
+            </g>
+          </sc-for>
+          <line x1="12" y1="{{ spotY }}" x2="392" y2="{{ spotY }}" stroke="oklch(0.72 0.02 80)" stroke-width="1" stroke-dasharray="2 4" opacity="0.7"></line>
+          <line x1="12" y1="{{ strikeY }}" x2="392" y2="{{ strikeY }}" stroke="oklch(0.80 0.13 78)" stroke-width="1.4"></line>
+          <text x="14" y="{{ spotLabelY }}" fill="oklch(0.78 0.02 80)" font-family="IBM Plex Mono, monospace" font-size="9.5">SPOT {{ spotText }}</text>
+          <text x="14" y="{{ strikeLabelY }}" fill="oklch(0.84 0.13 78)" font-family="IBM Plex Mono, monospace" font-size="9.5">FLOOR {{ impliedStrikeText }}</text>
+          <text x="{{ zoneLabelX }}" y="252" fill="oklch(0.72 0.08 155)" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle">PROTECTED THROUGH {{ expiryShort }}</text>
+          <text x="16" y="252" fill="oklch(0.58 0.01 75)" font-family="IBM Plex Mono, monospace" font-size="9">{{ daysText }}D AGO</text>
+          <text x="{{ splitX }}" y="252" fill="oklch(0.58 0.01 75)" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle">NOW</text>
+        </svg>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px;">
+          <span style="display: flex; align-items: center; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: oklch(0.66 0.01 75);"><span style="width: 14px; height: 2px; background: oklch(0.80 0.13 78);"></span>GUARANTEED FLOOR</span>
+          <span style="display: flex; align-items: center; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: oklch(0.66 0.01 75);"><span style="width: 14px; height: 2px; background: oklch(0.72 0.02 80);"></span>CHAINLINK SPOT</span>
+          <span style="display: flex; align-items: center; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: oklch(0.66 0.01 75);"><span style="width: 10px; height: 10px; background: oklch(0.72 0.13 155); opacity: 0.35;"></span>PROTECTED ZONE</span>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.62 0.01 75); margin-bottom: 10px;">Payoff at expiry</div>
+        <svg viewBox="0 0 404 130" style="width: 100%; height: auto; display: block; background: oklch(0.185 0.008 70); border: 1px solid oklch(0.29 0.011 70); border-radius: 11px;">
+          <line x1="14" y1="{{ payoffZeroY }}" x2="390" y2="{{ payoffZeroY }}" stroke="oklch(0.38 0.012 70)" stroke-width="1" stroke-dasharray="2 4"></line>
+          <polyline points="{{ payoffUnhedged }}" fill="none" stroke="oklch(0.55 0.014 70)" stroke-width="1.4" stroke-dasharray="4 4"></polyline>
+          <polyline points="{{ payoffHedged }}" fill="none" stroke="oklch(0.80 0.13 78)" stroke-width="2"></polyline>
+          <line x1="{{ payoffStrikeX }}" y1="12" x2="{{ payoffStrikeX }}" y2="106" stroke="oklch(0.45 0.05 78)" stroke-width="1"></line>
+          <text x="{{ payoffStrikeX }}" y="122" fill="oklch(0.72 0.06 78)" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle">{{ impliedStrikeText }}</text>
+          <text x="18" y="122" fill="oklch(0.58 0.01 75)" font-family="IBM Plex Mono, monospace" font-size="9">FLOOR HOLDS BELOW</text>
+          <text x="386" y="122" fill="oklch(0.58 0.01 75)" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="end">UPSIDE KEPT</text>
+        </svg>
+      </div>
+
+      <div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.62 0.01 75); margin-bottom: 10px;">Where every number came from</div>
+        <div style="display: flex; flex-direction: column; gap: 1px; background: oklch(0.28 0.011 70); border: 1px solid oklch(0.28 0.011 70); border-radius: 10px; overflow: hidden;">
+          <sc-for list="{{ provenance }}" as="p" hint-placeholder-count="5">
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 11px 13px; background: oklch(0.20 0.008 70);">
+              <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+                <span style="font-size: 13px; color: oklch(0.88 0.01 82);">{{ p.label }}</span>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: oklch(0.63 0.01 75); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ p.source }}</span>
+              </div>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: oklch(0.92 0.01 82); white-space: nowrap;">{{ p.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <p style="margin: 10px 0 0; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; line-height: 1.6; color: oklch(0.58 0.01 75);">Sample values shown for design review. In the product every figure resolves from a live call — the language model only ever writes the four parsed fields.</p>
+      </div>
+
+    </aside>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showProvenance&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Panel&quot;},&quot;verdict&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;worth&quot;,&quot;marginal&quot;,&quot;against&quot;],&quot;default&quot;:&quot;worth&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Judgment&quot;}}">
+class Component extends DCLogic {
+  state = {
+    sentence: "I need my ETH worth at least $2,300 in two weeks",
+    qty: 1, unitFloor: 2300, days: 14,
+    picked: 0, noMatch: false, expanded: false, deposited: false,
+    confirmed: false, executed: false
+  };
+
+  // ── formatting
+  money(n, d) { return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d === undefined ? 2 : d, maximumFractionDigits: d === undefined ? 2 : d }); }
+
+  book() {
+    return [
+      { strike: 2300, days: 14, unit: 10.42, budget: 4120, iv: 0.51 },
+      { strike: 2250, days: 16, unit: 7.86, budget: 3120, iv: 0.53 },
+      { strike: 2400, days: 12, unit: 21.30, budget: 1880, iv: 0.49 },
+      { strike: 2150, days: 14, unit: 5.97, budget: 2640, iv: 0.55 },
+      { strike: 2200, days: 21, unit: 9.44, budget: 5200, iv: 0.54 },
+      { strike: 2350, days: 28, unit: 24.61, budget: 3400, iv: 0.52 },
+      { strike: 2100, days: 28, unit: 11.08, budget: 2960, iv: 0.58 },
+      { strike: 2450, days: 28, unit: 44.07, budget: 1240, iv: 0.50 }
+    ];
+  }
+
+  dateIn(days) {
+    const d = new Date(2026, 7, 28 + days);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
+  candleData(strike, spot, days) {
+    const n = 42, out = [];
+    let p = spot * 0.955;
+    const raw = [];
+    for (let i = 0; i < n; i++) {
+      const drift = Math.sin(i * 0.37) * 22 + Math.cos(i * 0.11) * 34 + ((i * 53) % 17 - 8) * 4.5;
+      const o = p, c = p + drift * 0.42;
+      const h = Math.max(o, c) + Math.abs(drift) * 0.30 + 4;
+      const l = Math.min(o, c) - Math.abs(drift) * 0.26 - 4;
+      raw.push({ o: o, c: c, h: h, l: l });
+      p = c;
+    }
+    const shift = spot - raw[n - 1].c;
+    raw.forEach(function (r) { r.o += shift; r.c += shift; r.h += shift; r.l += shift; });
+
+    const x0 = 12, x1 = 392, y0 = 18, y1 = 232;
+    const splitX = x0 + (x1 - x0) * 0.68;
+    let lo = strike, hi = strike;
+    raw.forEach(function (r) { lo = Math.min(lo, r.l); hi = Math.max(hi, r.h); });
+    lo = Math.min(lo, spot) * 0.985; hi = Math.max(hi, spot) * 1.015;
+    const y = function (v) { return y1 - ((v - lo) / (hi - lo)) * (y1 - y0); };
+    const step = (splitX - x0) / n, w = Math.max(2.4, step * 0.6);
+
+    raw.forEach(function (r, i) {
+      const up = r.c >= r.o;
+      const by = y(Math.max(r.o, r.c)), bh = Math.max(1.2, y(Math.min(r.o, r.c)) - by);
+      out.push({
+        x: +(x0 + i * step + (step - w) / 2).toFixed(2), w: +w.toFixed(2),
+        cx: +(x0 + i * step + step / 2).toFixed(2),
+        by: +by.toFixed(2), bh: +bh.toFixed(2),
+        hy: +y(r.h).toFixed(2), ly: +y(r.l).toFixed(2),
+        color: up ? "oklch(0.70 0.11 155)" : "oklch(0.62 0.14 28)"
+      });
+    });
+    return { candles: out, y: y, splitX: +splitX.toFixed(2), x1: x1 };
+  }
+
+  renderVals() {
+    const s = this.state, self = this;
+    const qty = s.qty > 0 ? s.qty : 1;
+    const strike = s.unitFloor;
+    const totalFloor = qty * strike;
+    const spot = 2451.18;
+    const cands = this.book();
+    const sel = cands[s.picked] || cands[0];
+    const others = cands.filter(function (c) { return c !== sel; });
+    const premiumTotal = sel.unit * qty;
+    const costPct = (premiumTotal / totalFloor) * 100;
+    const chart = this.candleData(strike, spot, s.days);
+
+    // payoff geometry
+    const px0 = 14, px1 = 390, pyTop = 20, pyBot = 100;
+    const lo = strike * 0.86, hi = strike * 1.16;
+    const X = function (v) { return px0 + ((v - lo) / (hi - lo)) * (px1 - px0); };
+    // split scale: gains use the upper band, losses the lower band, so a $10
+    // premium stays legible next to a $368 move
+    const maxGain = strike * 0.16 * qty;
+    const maxLoss = strike * 0.16 * qty;
+    const zeroY = pyTop + (pyBot - pyTop) * 0.52;
+    const Y = function (v) {
+      const y = v >= 0
+        ? zeroY - (Math.min(v, maxGain) / maxGain) * (zeroY - pyTop)
+        : zeroY + (Math.min(-v, maxLoss) / maxLoss) * (pyBot - zeroY);
+      return Math.max(pyTop, Math.min(pyBot, y));
+    };
+    const floorY = Math.max(Y(-premiumTotal), zeroY + 6); // keep the flat floor clear of the axis
+    const un = [], he = [];
+    for (let i = 0; i <= 24; i++) {
+      const p = lo + (hi - lo) * (i / 24);
+      un.push(X(p).toFixed(1) + "," + Y((p - strike) * qty).toFixed(1));
+      const hv = (p - strike) * qty - premiumTotal;
+      he.push(X(p).toFixed(1) + "," + (hv <= 0 ? floorY : Y(hv)).toFixed(1));
+    }
+
+    const verdicts = {
+      worth: {
+        color: "oklch(0.78 0.12 155)", bg: "oklch(0.235 0.022 155)", border: "oklch(0.36 0.045 155)",
+        title: "Worth it — " + costPct.toFixed(2) + "% to remove all downside below your floor",
+        body: "Two weeks of ETH volatility has historically moved the price further than " + costPct.toFixed(2) + "% in either direction more often than not. Paying " + self.money(premiumTotal) + " to make " + self.money(totalFloor, 0) + " unconditional is cheap relative to the risk being removed. This verdict is a fixed rule over live numbers, not a model opinion."
+      },
+      marginal: {
+        color: "oklch(0.82 0.12 85)", bg: "oklch(0.245 0.025 85)", border: "oklch(0.38 0.05 85)",
+        title: "Marginal — the premium is a meaningful share of what it protects",
+        body: "At " + costPct.toFixed(2) + "% of " + self.money(totalFloor, 0) + ", this floor costs enough that a slightly lower floor, or a shorter horizon, is likely the better trade. Nothing here is wrong — it is simply near the line where insurance stops paying for itself."
+      },
+      against: {
+        color: "oklch(0.70 0.15 28)", bg: "oklch(0.24 0.03 28)", border: "oklch(0.38 0.06 28)",
+        title: "Not worth it — the premium eats too much of the protected value",
+        body: "At " + costPct.toFixed(2) + "% of " + self.money(totalFloor, 0) + " you would pay more for the floor than the floor is plausibly worth over " + s.days + " days. Payung says so instead of selling you the trade. Lower the floor or shorten the horizon and re-check the book."
+      }
+    };
+    const v = verdicts[this.props.verdict || "worth"] || verdicts.worth;
+
+    const showProv = this.props.showProvenance !== false;
+
+    return {
+      sentence: s.sentence,
+      onSentence: function (e) { self.setState({ sentence: e.target.value }); },
+      onParse: function () { self.setState({ picked: 0, noMatch: false, expanded: false }); },
+      onSentenceKey: function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); self.setState({ picked: 0, noMatch: false, expanded: false }); } },
+      examples: [
+        { label: "Protect 1 ETH at $2,300 for 14 days", pick: function () { self.setState({ sentence: "I need my ETH worth at least $2,300 in two weeks", qty: 1, unitFloor: 2300, days: 14 }); } },
+        { label: "Keep 0.5 BTC above $58k for a month", pick: function () { self.setState({ sentence: "Keep my 0.5 BTC worth at least $29,000 for the next month", qty: 0.5, unitFloor: 58000, days: 30 }); } },
+        { label: "Floor 3 ETH at $6,600 total", pick: function () { self.setState({ sentence: "My 3 ETH must be worth $6,600 total by the end of the month", qty: 3, unitFloor: 2200, days: 21 }); } }
+      ],
+      qtyText: String(s.qty),
+      unitFloorText: self.money(strike, 0),
+      totalFloorText: self.money(totalFloor, 0),
+      daysText: String(s.days),
+      impliedStrikeText: self.money(strike, 0),
+      onQty: function (e) { const n = parseFloat(e.target.value.replace(/[^0-9.]/g, "")); self.setState({ qty: isNaN(n) ? 0 : n }); },
+      onUnitFloor: function (e) { const n = parseFloat(e.target.value.replace(/[^0-9.]/g, "")); self.setState({ unitFloor: isNaN(n) ? 0 : n }); },
+      onDays: function (e) { const n = parseInt(e.target.value.replace(/[^0-9]/g, ""), 10); self.setState({ days: isNaN(n) ? 1 : n }); },
+      restated: "You keep " + s.qty + " ETH and every dollar of upside. If ETH is below " + self.money(strike, 0) + " on " + self.dateIn(sel.days) + ", the option pays you the difference in cash. If it is above, it pays nothing and you have lost only the premium.",
+      stepLabel: s.executed ? "STEP 5 / 5 · FILLED" : (s.confirmed ? "STEP 5 / 5 · AWAITING FILL" : "STEP 3 / 5 · REVIEWING QUOTE"),
+
+      hasMatches: !s.noMatch,
+      noMatches: s.noMatch,
+      noMatchToggleLabel: s.noMatch ? "show matched offers" : "preview the no-match state",
+      toggleNoMatch: function () { self.setState({ noMatch: !s.noMatch }); },
+      hero: (function () {
+        const d = ((sel.strike - strike) / strike) * 100;
+        const far = Math.abs(d) > 15;
+        return {
+          strike: self.money(sel.strike, 0),
+          window: sel.days + "d",
+          expiryFull: self.dateIn(sel.days) + ", 2026",
+          budget: self.money(sel.budget, 0),
+          premium: self.money(sel.unit) + " / ETH",
+          badge: far
+            ? "FAR FROM YOUR FLOOR · " + (d > 0 ? "+" : "") + d.toFixed(1) + "%"
+            : (s.picked === 0
+                ? (Math.abs(d) < 0.01 ? "EXACT MATCH" : "CLOSEST MATCH · " + (d > 0 ? "+" : "") + d.toFixed(1) + "%")
+                : "YOUR PICK · " + (d > 0 ? "+" : "") + d.toFixed(1) + "%"),
+          badgeBg: far ? "oklch(0.26 0.03 85)" : (s.picked === 0 ? "oklch(0.26 0.03 155)" : "oklch(0.26 0.012 70)"),
+          badgeColor: far ? "oklch(0.86 0.09 85)" : (s.picked === 0 ? "oklch(0.86 0.07 155)" : "oklch(0.82 0.01 80)"),
+          badgeBorder: far ? "oklch(0.40 0.06 85)" : (s.picked === 0 ? "oklch(0.38 0.05 155)" : "oklch(0.36 0.012 70)")
+        };
+      })(),
+      farMiss: Math.abs(((sel.strike - strike) / strike) * 100) > 15,
+      farMissBody: "The nearest live offer is " + (((sel.strike - strike) / strike) * 100).toFixed(1) + "% away from the floor you asked for. Payung shows it rather than pretending it matches — buying it protects a different number than the one you stated.",
+      expanded: s.expanded,
+      hasOthers: others.length > 0,
+      toggleExpanded: function () { self.setState({ expanded: !s.expanded }); },
+      discloseCaret: s.expanded ? "\u25BE" : "\u25B8",
+      discloseSummary: (function () {
+        if (!others.length) return "";
+        if (s.expanded) return "Hide the other " + others.length + " live offers";
+        const cheap = others.reduce(function (a, b) { return b.unit < a.unit ? b : a; });
+        const longest = others.reduce(function (a, b) { return b.days > a.days ? b : a; });
+        if (others.length === 1 || cheap === longest) {
+          return others.length + " more live offer" + (others.length > 1 ? "s" : "") + " — from " + self.money(cheap.unit) + "/ETH at a " + self.money(cheap.strike, 0) + " floor";
+        }
+        return others.length + " more live offers — from " + self.money(cheap.unit) + "/ETH (" + self.money(cheap.strike, 0) + " floor, " + (sel.unit / cheap.unit).toFixed(1) + "\u00D7 cheaper) to " + self.money(longest.unit) + "/ETH (" + longest.days + "d window)";
+      })(),
+      others: others.map(function (c) {
+        const d = ((c.strike - strike) / strike) * 100;
+        return {
+          strike: self.money(c.strike, 0),
+          expiry: self.dateIn(c.days) + " · " + c.days + "d",
+          fit: (Math.abs(d) < 0.01 ? "exact" : (d > 0 ? "+" : "") + d.toFixed(1) + "%"),
+          fitColor: Math.abs(d) < 0.01 ? "oklch(0.78 0.12 155)" : "oklch(0.78 0.01 80)",
+          premium: self.money(c.unit) + " / ETH",
+          iv: "iv " + c.iv.toFixed(2),
+          budget: self.money(c.budget, 0),
+          select: function () { self.setState({ picked: cands.indexOf(c), confirmed: false, executed: false }); }
+        };
+      }),
+
+      premiumTotal: self.money(premiumTotal),
+      premiumPerUnit: self.money(sel.unit),
+      floorNetText: self.money(totalFloor - premiumTotal),
+      costPct: costPct.toFixed(2) + "%",
+      verdictTitle: v.title, verdictBody: v.body,
+      verdictColor: v.color, verdictBg: v.bg, verdictBorder: v.border,
+      coverageBody: "This offer expires " + self.dateIn(sel.days) + ", " + (sel.days >= s.days ? (sel.days - s.days) + " day(s) after" : (s.days - sel.days) + " day(s) before") + " your stated " + s.days + "-day horizon" + (sel.days < s.days ? " — you are unprotected for that gap, and Payung will not paper over it." : ". The extra days are covered at no additional cost.") + " Maker budget caps this fill at " + self.money(sel.budget, 0) + " of collateral.",
+
+      collatPill: s.deposited ? "aBasUSDC READY" : "DEPOSIT NEEDED",
+      collatPillBg: s.deposited ? "oklch(0.24 0.02 155)" : "oklch(0.25 0.025 85)",
+      collatPillColor: s.deposited ? "oklch(0.85 0.06 155)" : "oklch(0.86 0.08 85)",
+      collatPillBorder: s.deposited ? "oklch(0.35 0.04 155)" : "oklch(0.38 0.05 85)",
+      walletUsdc: s.deposited ? "5.42" : "20.00",
+      walletAUsdc: s.deposited ? "14.58" : "0.00",
+      depositLabel: s.deposited ? "Deposited via Aave V3 ✓" : "Deposit " + self.money(premiumTotal) + " into Aave",
+      onDeposit: function () { self.setState({ deposited: true }); },
+
+      confirmed: s.confirmed,
+      executed: s.executed,
+      onConfirm: function (e) { self.setState({ confirmed: e.target.checked }); },
+      onSimulate: function () { self.setState({ executed: false }); },
+      onExecute: function () { if (s.confirmed && s.deposited) self.setState({ executed: true }); },
+      execStage: s.executed ? "FILLED" : (s.confirmed && s.deposited ? "READY" : "BLOCKED"),
+      execBorder: s.executed ? "oklch(0.38 0.05 155)" : "oklch(0.30 0.012 70)",
+      execBtnBg: s.confirmed && s.deposited ? "oklch(0.74 0.14 155)" : "oklch(0.28 0.011 70)",
+      execBtnColor: s.confirmed && s.deposited ? "oklch(0.20 0.04 155)" : "oklch(0.55 0.01 75)",
+      execBtnLabel: s.executed ? "Filled — see receipt below" : "Execute fillOrder on Base",
+      execLog: [
+        { label: "callStaticFillOrder — free dry run against current chain state", meta: "PASS · 0 gas", dot: "oklch(0.74 0.14 155)", metaColor: "oklch(0.78 0.10 155)" },
+        { label: "Order freshness re-checked immediately before fill", meta: "expiry " + self.dateIn(sel.days), dot: "oklch(0.74 0.14 155)", metaColor: "oklch(0.72 0.01 78)" },
+        { label: "Allowance approved for the exact amount, never MaxUint256", meta: self.money(premiumTotal) + " aBasUSDC", dot: s.deposited ? "oklch(0.74 0.14 155)" : "oklch(0.72 0.13 85)", metaColor: "oklch(0.72 0.01 78)" },
+        { label: "Your ETH balance touched by this flow", meta: "0.00 — never", dot: "oklch(0.50 0.014 70)", metaColor: "oklch(0.66 0.01 75)" }
+      ],
+      receiptLine: "You bought " + s.qty + " put contract(s) at a " + self.money(strike, 0) + " strike expiring " + self.dateIn(sel.days) + " for " + self.money(premiumTotal) + ", read from the Transfer log of the receipt rather than from what was requested.",
+
+      candles: chart.candles,
+      splitX: chart.splitX,
+      expiryX: chart.x1,
+      spotY: +chart.y(spot).toFixed(2),
+      strikeY: +chart.y(strike).toFixed(2),
+      spotLabelY: +(chart.y(spot) - 5).toFixed(2),
+      strikeLabelY: +(chart.y(strike) + 12).toFixed(2),
+      spotText: self.money(spot),
+      expiryShort: self.dateIn(sel.days),
+      zoneLabelX: +((chart.splitX + chart.x1) / 2).toFixed(2),
+      zone: { x: chart.splitX, y: +chart.y(strike).toFixed(2), w: +(chart.x1 - chart.splitX).toFixed(2), h: +(232 - chart.y(strike)).toFixed(2) },
+
+      payoffUnhedged: un.join(" "),
+      payoffHedged: he.join(" "),
+      payoffZeroY: +zeroY.toFixed(1),
+      payoffStrikeX: +X(strike).toFixed(1),
+
+      provenance: showProv ? [
+        { label: "Spot price", source: "Chainlink AggregatorV3 · 0x7104…Bb70", value: self.money(spot) },
+        { label: "Candle history", source: "Coinbase Exchange · ETH-USD · " + s.days + "d", value: "42 bars" },
+        { label: "Premium", source: "Thetanuts previewFillOrder()", value: self.money(premiumTotal) },
+        { label: "Strike", source: "derived · floorTotalUsd ÷ quantity", value: self.money(strike, 0) },
+        { label: "Maker budget", source: "OptionBook order · availableAmount", value: self.money(sel.budget, 0) },
+        { label: "Parsed fields", source: "Gonka Router · transcription only", value: "4" }
+      ] : []
+    };
+  }
+}
+</script>
+</body>
+</html>

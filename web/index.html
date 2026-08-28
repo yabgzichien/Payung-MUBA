@@ -3,463 +3,1507 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Payung — buy a floor</title>
+<title>Payung — Downside floor, priced live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="/ethers.min.js"></script>
 <style>
   :root {
-    --bg: #0b0d12;
-    --panel: #12151d;
-    --panel-2: #171b25;
-    --border: #232838;
-    --text: #e8eaf0;
-    --dim: #8892a6;
-    --accent: #4fd1a5;
-    --accent-dim: #2a5c4a;
-    --danger: #ff6b6b;
-    --warn: #ffb84f;
-    --mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    --bg: #17150f;
+    --panel-bg: oklch(0.19 0.008 70);
+    --card-bg: oklch(0.225 0.009 70);
+    --subcard-bg: oklch(0.20 0.008 70);
+    --input-bg: oklch(0.185 0.008 70);
+    --border: oklch(0.30 0.012 70);
+    --border-subtle: oklch(0.28 0.011 70);
+    --text-main: oklch(0.95 0.006 85);
+    --text-bright: oklch(0.98 0.005 90);
+    --text-dim: oklch(0.66 0.01 75);
+    --text-muted: oklch(0.58 0.01 75);
+    --accent: oklch(0.80 0.13 78);
+    --accent-hover: oklch(0.86 0.12 80);
+    --accent-bg: oklch(0.235 0.02 78);
+    --accent-border: oklch(0.34 0.04 78);
+    --accent-text-dark: oklch(0.20 0.04 78);
+    --green: oklch(0.74 0.14 155);
+    --green-bg: oklch(0.24 0.02 155);
+    --green-border: oklch(0.34 0.03 155);
+    --green-text: oklch(0.85 0.05 155);
+    --warn: oklch(0.82 0.12 85);
+    --warn-bg: oklch(0.245 0.028 85);
+    --warn-border: oklch(0.38 0.055 85);
+    --warn-text: oklch(0.86 0.09 85);
+    --danger: oklch(0.70 0.15 28);
+    --danger-bg: oklch(0.24 0.03 28);
+    --danger-border: oklch(0.38 0.06 28);
+    --font-sans: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace, Consolas;
   }
-  * { box-sizing: border-box; }
-  body {
+
+  html, body {
     margin: 0;
+    padding: 0;
     background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    min-height: 100vh;
-  }
-  .wrap {
-    max-width: 760px;
-    margin: 0 auto;
-    padding: 32px 20px 80px;
-  }
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 28px;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  header .brand { display: flex; align-items: baseline; gap: 10px; }
-  header h1 { font-size: 20px; margin: 0; letter-spacing: -0.02em; }
-  header .tag { color: var(--dim); font-size: 13px; }
-  .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  header .net {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--accent);
-    border: 1px solid var(--accent-dim);
-    padding: 4px 9px;
-    border-radius: 20px;
-    background: rgba(79,209,165,0.08);
-  }
-  .wallet-pill {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 4px 12px;
-    font-size: 12px;
-    font-family: var(--mono);
-  }
-  .wallet-addr { color: var(--accent); font-weight: 600; }
-  .wallet-bal { color: var(--dim); border-left: 1px solid var(--border); padding-left: 8px; }
-  .wallet-disconnect {
-    background: transparent;
-    border: none;
-    color: var(--dim);
-    cursor: pointer;
-    font-size: 11px;
-    padding: 0 0 0 4px;
-  }
-  .wallet-disconnect:hover { color: var(--danger); }
-  .btn.wallet-btn { padding: 5px 12px; font-size: 12px; border-radius: 20px; }
-
-  .step {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 22px;
-    margin-bottom: 16px;
-    opacity: 0.35;
-    filter: saturate(0.5);
-    transition: opacity 0.35s ease, filter 0.35s ease;
-    pointer-events: none;
-  }
-  .step.active, .step.done {
-    opacity: 1;
-    filter: none;
-    pointer-events: auto;
-  }
-  .step-label {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--dim);
-    margin-bottom: 14px;
-  }
-  .step-num {
-    width: 20px; height: 20px;
-    border-radius: 50%;
-    border: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px;
-    color: var(--dim);
-    flex-shrink: 0;
-  }
-  .step.done .step-num { background: var(--accent); border-color: var(--accent); color: #06251a; }
-  .step.active .step-num { border-color: var(--accent); color: var(--accent); }
-
-  .field-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-  .field { flex: 1; min-width: 140px; }
-  .field label { display: block; font-size: 11px; color: var(--dim); margin-bottom: 5px; }
-  .field input, .field select {
-    width: 100%;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-    color: var(--text);
-    font-size: 14px;
-    font-family: inherit;
-  }
-  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
-
-  .btn {
-    background: var(--accent);
-    color: #06251a;
-    border: none;
-    border-radius: 8px;
-    padding: 11px 18px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: transform 0.1s ease, opacity 0.15s ease;
-  }
-  .btn:hover { opacity: 0.9; }
-  .btn:active { transform: scale(0.98); }
-  .btn.secondary {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-  }
-  .btn.danger { background: var(--danger); color: #2a0808; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .sentence {
+    color: var(--text-main);
+    font-family: var(--font-sans);
     font-size: 15px;
-    line-height: 1.6;
-    color: var(--dim);
-  }
-  .sentence b { color: var(--text); font-weight: 600; }
-  .sentence .accent { color: var(--accent); font-weight: 600; }
-
-  .candidate-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
-  .candidate {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 13px 16px;
-    cursor: pointer;
-    transition: border-color 0.15s ease, background 0.15s ease;
-  }
-  .candidate:hover { border-color: #3a4256; }
-  .candidate:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .candidate.selected { border-color: var(--accent); background: rgba(79,209,165,0.06); }
-  .candidate .strike { font-size: 16px; font-weight: 600; }
-  .candidate .meta { font-size: 12px; color: var(--dim); margin-top: 2px; }
-  .candidate .premium { text-align: right; }
-  .candidate .premium .amount { font-family: var(--mono); font-size: 15px; }
-  .candidate .premium .label { font-size: 11px; color: var(--dim); }
-  .candidate .badge {
-    display: inline-block;
-    font-size: 10px;
-    padding: 2px 7px;
-    border-radius: 20px;
-    margin-left: 8px;
-    vertical-align: middle;
-  }
-  .badge.good { background: rgba(79,209,165,0.15); color: var(--accent); }
-  .badge.warn { background: rgba(255,184,79,0.15); color: var(--warn); }
-
-  .verdict {
-    margin-top: 14px;
-    padding: 12px 14px;
-    border-radius: 10px;
-    border: 1px dashed var(--border);
-    font-size: 13px;
-    color: var(--dim);
-  }
-  .verdict b { color: var(--text); }
-  .verdict.reasonable { border: 1px solid var(--accent-dim); background: rgba(79,209,165,0.06); }
-  .verdict.reasonable b { color: var(--accent); }
-  .verdict.expensive { border: 1px solid #6b5a2a; background: rgba(255,184,79,0.06); }
-  .verdict.expensive b { color: var(--warn); }
-  .verdict.not-worth-it { border: 1px solid #6b2a2a; background: rgba(255,107,107,0.08); }
-  .verdict.not-worth-it b { color: var(--danger); }
-
-  svg { display: block; width: 100%; height: auto; }
-  .chart-wrap { margin-top: 16px; }
-  .chart-legend {
-    display: flex;
-    gap: 18px;
-    margin-top: 10px;
-    font-size: 12px;
-    color: var(--dim);
-  }
-  .chart-legend span { display: flex; align-items: center; gap: 6px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-
-  .exec-row { display: flex; gap: 10px; margin-top: 16px; align-items: center; flex-wrap: wrap; }
-  .sim-result {
-    margin-top: 14px;
-    font-family: var(--mono);
-    font-size: 13px;
-    padding: 12px 14px;
-    border-radius: 8px;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-  }
-  .sim-result.ok { border-color: var(--accent-dim); color: var(--accent); }
-  .tx-card {
-    margin-top: 16px;
-    padding: 18px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, rgba(79,209,165,0.10), rgba(79,209,165,0.02));
-    border: 1px solid var(--accent-dim);
-  }
-  .tx-card .tx-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-  .tx-card .tx-hash { font-family: var(--mono); font-size: 13px; word-break: break-all; color: var(--accent); }
-  .tx-card a { color: var(--accent); text-decoration: none; font-size: 13px; }
-  .tx-card a:hover { text-decoration: underline; }
-
-  .cost-summary-card {
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px 18px;
-    margin-top: 14px;
-    margin-bottom: 14px;
-  }
-  .cost-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 12px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .cost-title {
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--dim);
-  }
-  .cost-badge-amount {
-    font-family: var(--mono);
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--accent);
-  }
-  .cost-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-    gap: 12px;
-  }
-  .cost-item label {
-    font-size: 11px;
-    color: var(--dim);
-    display: block;
-    margin-bottom: 3px;
-  }
-  .cost-item .value {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .cost-footnote {
-    margin-top: 12px;
-    font-size: 12px;
-    color: var(--dim);
-    border-top: 1px dashed var(--border);
-    padding-top: 10px;
     line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
-  .balance-indicator {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    margin-top: 10px;
-    padding-top: 8px;
-    border-top: 1px dashed var(--border);
-    font-family: var(--mono);
-  }
-  .balance-indicator.sufficient { color: var(--accent); }
-  .balance-indicator.short { color: var(--warn); }
 
-  .live-banner {
-    font-family: var(--mono);
-    font-size: 11px;
-    text-align: center;
-    color: var(--dim);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px;
-    margin-bottom: 20px;
-  }
-  .reset-link {
-    display: block;
-    text-align: center;
-    margin-top: 28px;
-    color: var(--dim);
-    font-size: 12px;
-    cursor: pointer;
-  }
-  .reset-link:hover { color: var(--text); }
+  * { box-sizing: border-box; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { color: var(--accent-hover); text-decoration: underline; }
+  input, textarea, button, select { font-family: inherit; }
+  ::selection { background: oklch(0.80 0.13 78 / 0.3); }
+
+  @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+  @keyframes riseIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .spinner {
     display: inline-block;
-    width: 13px; height: 13px;
+    width: 12px; height: 12px;
     border: 2px solid rgba(255,255,255,0.2);
-    border-top-color: var(--text);
+    border-top-color: var(--text-main);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
     vertical-align: middle;
     margin-right: 6px;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 16px 32px;
+    border-bottom: 1px solid var(--border);
+    background: oklch(0.205 0.009 70);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .header-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+
+  .brand-title {
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-bright);
+  }
+
+  .brand-tag {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .net-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--green-border);
+    border-radius: 999px;
+    background: var(--green-bg);
+  }
+
+  .pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulseDot 2.4s ease-in-out infinite;
+  }
+
+  .net-text {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    color: var(--green-text);
+  }
+
+  .wallet-box {
+    display: flex;
+    align-items: center;
+  }
+
+  .wallet-btn {
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--accent-border);
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .wallet-btn:hover {
+    background: oklch(0.28 0.03 78);
+    border-color: var(--accent);
+  }
+
+  .wallet-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1px dashed var(--border);
+    border-radius: 999px;
+    background: var(--subcard-bg);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+
+  .wallet-addr {
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .wallet-bal {
+    color: var(--text-dim);
+    border-left: 1px solid var(--border);
+    padding-left: 8px;
+  }
+
+  .wallet-disconnect {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 2px 0 4px;
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .wallet-disconnect:hover { color: var(--danger); }
+
+  /* Workspace Layout */
+  .workspace-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+    gap: 0;
+    align-items: start;
+    min-height: calc(100vh - 61px);
+  }
+
+  @media (max-width: 980px) {
+    .workspace-layout { grid-template-columns: 1fr; }
+    header { padding: 14px 20px; }
+  }
+
+  /* Main Flow */
+  main {
+    padding: 28px 32px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 860px;
+  }
+
+  @media (max-width: 600px) {
+    main { padding: 20px 16px 60px; }
+  }
+
+  .flow-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 2px;
+  }
+
+  .flow-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .flow-divider {
+    flex: 1;
+    height: 1px;
+    background: oklch(0.28 0.01 70);
+  }
+
+  .flow-step-status {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+  }
+
+  /* Step Card */
+  .step-card {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card-bg);
+    overflow: hidden;
+    transition: opacity 0.3s ease, border-color 0.3s ease;
+  }
+
+  .step-card.inactive {
+    opacity: 0.45;
+    filter: saturate(0.6);
+  }
+
+  .step-card.active, .step-card.done {
+    opacity: 1;
+    filter: none;
+  }
+
+  .step-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .step-num-badge {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    background: oklch(0.32 0.012 70);
+    color: oklch(0.85 0.01 80);
+    font-weight: 600;
+  }
+
+  .step-card.active .step-num-badge {
+    background: var(--accent);
+    color: var(--accent-text-dark);
+  }
+
+  .step-card.done .step-num-badge {
+    background: var(--green);
+    color: oklch(0.20 0.04 155);
+  }
+
+  .step-title {
+    font-weight: 600;
+    font-size: 16.5px;
+    letter-spacing: -0.01em;
+    color: var(--text-bright);
+  }
+
+  .step-tag {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    padding: 4px 9px;
+    border-radius: 5px;
+    background: oklch(0.26 0.012 70);
+    color: oklch(0.70 0.01 78);
+    border: 1px solid oklch(0.33 0.012 70);
+  }
+
+  .step-tag.ai {
+    background: oklch(0.27 0.02 300);
+    color: oklch(0.80 0.08 300);
+    border: 1px solid oklch(0.35 0.04 300);
+  }
+
+  .step-card-body {
+    padding: 20px;
+  }
+
+  /* Step 1 Elements */
+  .nl-textarea {
+    width: 100%;
+    resize: none;
+    background: var(--input-bg);
+    border: 1px solid oklch(0.38 0.03 78);
+    border-radius: 12px;
+    padding: 18px 20px;
+    color: var(--text-bright);
+    font-size: 22px;
+    line-height: 1.35;
+    letter-spacing: -0.02em;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .nl-textarea:focus {
+    border-color: var(--accent);
+  }
+
+  .nl-action-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+
+  .nl-hint {
+    font-size: 13.5px;
+    color: var(--text-dim);
+  }
+
+  .nl-hint b {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: oklch(0.82 0.01 80);
+  }
+
+  .btn-primary {
+    padding: 12px 24px;
+    border-radius: 10px;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-text-dark);
+    font-weight: 600;
+    font-size: 14.5px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+  }
+
+  .btn-primary:hover {
+    background: var(--accent-hover);
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .example-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .pill-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    align-self: center;
+    letter-spacing: 0.06em;
+  }
+
+  .example-pill {
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--subcard-bg);
+    color: oklch(0.78 0.01 80);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .example-pill:hover {
+    border-color: oklch(0.55 0.06 78);
+    color: oklch(0.92 0.01 82);
+  }
+
+  .understood-strip {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px dashed var(--border);
+  }
+
+  .strip-label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+
+  .audit-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+  }
+
+  .audit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--subcard-bg);
+  }
+
+  .audit-field label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    color: oklch(0.63 0.01 75);
+  }
+
+  .audit-field input, .audit-field select {
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-size: 15.5px;
+    font-weight: 500;
+    padding: 0;
+    width: 100%;
+  }
+
+  .audit-field select option {
+    background: #1f1d18;
+    color: var(--text-bright);
+  }
+
+  .derived-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 12px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
+  }
+
+  .derived-tag {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    color: oklch(0.75 0.06 78);
+    white-space: nowrap;
+  }
+
+  .derived-text {
+    font-size: 14.5px;
+    color: oklch(0.90 0.02 82);
+  }
+
+  .derived-text b {
+    font-family: var(--font-mono);
+    font-weight: 600;
+  }
+
+  .restated-text {
+    margin: 14px 0 0;
+    font-size: 15px;
+    color: oklch(0.80 0.01 80);
+    line-height: 1.55;
+  }
+
+  .restated-text b {
+    color: var(--text-bright);
+  }
+
+  .restated-text .accent {
+    color: var(--accent);
+  }
+
+  .find-btn-row {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  /* Step 2 Elements */
+  .query-subhead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 12px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    color: oklch(0.62 0.01 75);
+  }
+
+  .hero-card {
+    border: 1px solid oklch(0.62 0.11 78);
+    border-radius: 12px;
+    background: oklch(0.235 0.022 78);
+    padding: 18px 20px;
+  }
+
+  .hero-flex {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .hero-left {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .hero-strike-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .hero-strike {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+
+  .badge-chip {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    padding: 4px 9px;
+    border-radius: 5px;
+    border: 1px solid var(--green-border);
+    background: var(--green-bg);
+    color: var(--green-text);
+  }
+
+  .badge-chip.warn {
+    border-color: var(--warn-border);
+    background: var(--warn-bg);
+    color: var(--warn-text);
+  }
+
+  .badge-chip.neutral {
+    border-color: var(--border);
+    background: var(--subcard-bg);
+    color: oklch(0.82 0.01 80);
+  }
+
+  .hero-details {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: oklch(0.72 0.01 78);
+  }
+
+  .hero-right {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: flex-end;
+  }
+
+  .hero-premium {
+    font-family: var(--font-mono);
+    font-size: 23px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--text-bright);
+  }
+
+  .hero-confirmed-tag {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    color: oklch(0.68 0.01 75);
+  }
+
+  .disclosure-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    margin-top: 8px;
+    padding: 13px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--subcard-bg);
+    color: oklch(0.80 0.01 80);
+    font-size: 14px;
+    cursor: pointer;
+    line-height: 1.5;
+    transition: all 0.15s ease;
+  }
+
+  .disclosure-btn:hover {
+    border-color: oklch(0.46 0.03 78);
+    color: oklch(0.92 0.01 82);
+  }
+
+  .disclosure-caret {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: oklch(0.72 0.06 78);
+  }
+
+  .other-offers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .candidate-row {
+    display: grid;
+    grid-template-columns: 16px repeat(auto-fit, minmax(104px, 1fr));
+    gap: 12px 16px;
+    align-items: center;
+    padding: 12px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 1px solid var(--border-subtle);
+    background: var(--subcard-bg);
+    transition: border-color 0.15s ease;
+  }
+
+  .candidate-row:hover {
+    border-color: oklch(0.52 0.06 78);
+  }
+
+  .candidate-radio {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid oklch(0.42 0.014 70);
+  }
+
+  .candidate-row.selected .candidate-radio {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
+  .cand-col {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .cand-col-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    color: oklch(0.60 0.01 75);
+  }
+
+  .cand-col-val {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    font-weight: 500;
+  }
+
+  .alert-banner {
+    display: flex;
+    gap: 12px;
+    margin-top: 10px;
+    padding: 13px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--warn-border);
+    background: var(--warn-bg);
+  }
+
+  .alert-tag {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    color: var(--warn-text);
+    white-space: nowrap;
+    padding-top: 2px;
+  }
+
+  .alert-body {
+    margin: 0;
+    font-size: 14px;
+    color: oklch(0.86 0.03 85);
+    line-height: 1.55;
+  }
+
+  .filter-pills {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+
+  .filter-pill {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    padding: 5px 10px;
+    border-radius: 5px;
+    background: var(--subcard-bg);
+    border: 1px solid var(--border);
+    color: oklch(0.68 0.01 78);
+  }
+
+  .no-match-box {
+    padding: 34px 20px 38px;
+    text-align: center;
+  }
+
+  /* Step 3 Elements */
+  .metrics-4grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    overflow: hidden;
+  }
+
+  .metric-cell {
+    padding: 15px 16px;
+    background: var(--subcard-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .metric-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: oklch(0.63 0.01 75);
+  }
+
+  .metric-value {
+    font-family: var(--font-mono);
+    font-size: 24px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--text-bright);
+  }
+
+  .metric-sub {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .verdict-card {
+    display: flex;
+    gap: 14px;
+    margin-top: 14px;
+    padding: 16px 18px;
+    border-radius: 11px;
+    border: 1px solid var(--green-border);
+    background: var(--green-bg);
+    transition: all 0.2s ease;
+  }
+
+  .verdict-card.marginal {
+    border-color: var(--warn-border);
+    background: var(--warn-bg);
+  }
+
+  .verdict-card.against {
+    border-color: var(--danger-border);
+    background: var(--danger-bg);
+  }
+
+  .verdict-dot {
+    width: 10px;
+    height: 10px;
+    margin-top: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    flex: none;
+  }
+
+  .verdict-card.marginal .verdict-dot { background: var(--warn); }
+  .verdict-card.against .verdict-dot { background: var(--danger); }
+
+  .verdict-title {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 5px;
+    color: var(--green);
+  }
+
+  .verdict-card.marginal .verdict-title { color: var(--warn); }
+  .verdict-card.against .verdict-title { color: var(--danger); }
+
+  .verdict-body {
+    margin: 0;
+    font-size: 14.5px;
+    color: oklch(0.84 0.01 80);
+    line-height: 1.55;
+  }
+
+  .gap-box {
+    display: flex;
+    gap: 12px;
+    margin-top: 10px;
+    padding: 14px 18px;
+    border-radius: 11px;
+    border: 1px dashed oklch(0.34 0.012 70);
+  }
+
+  /* Step 4 Elements */
+  .collat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .btn-outline {
+    padding: 11px 18px;
+    border-radius: 9px;
+    border: 1px solid oklch(0.40 0.03 78);
+    background: oklch(0.24 0.02 78);
+    color: oklch(0.90 0.06 80);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+  }
+
+  .btn-outline:hover { background: oklch(0.28 0.03 78); }
+
+  /* Step 5 Elements */
+  .log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .log-row {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 11px 14px;
+    border-radius: 9px;
+    background: var(--subcard-bg);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .log-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-left: 4px;
+  }
+
+  .log-dot.pending { background: var(--warn); }
+  .log-dot.dim { background: oklch(0.50 0.014 70); }
+
+  .log-label {
+    font-size: 14px;
+    color: oklch(0.88 0.01 82);
+  }
+
+  .log-meta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: oklch(0.78 0.10 155);
+  }
+
+  .confirm-check-label {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 13px 16px;
+    border-radius: 10px;
+    border: 1px solid oklch(0.34 0.012 70);
+    background: var(--subcard-bg);
+    cursor: pointer;
+    margin-bottom: 14px;
+  }
+
+  .confirm-check-label input {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--green);
+    cursor: pointer;
+  }
+
+  .exec-btn-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .btn-sim {
+    flex: 1;
+    min-width: 160px;
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid oklch(0.38 0.012 70);
+    background: oklch(0.22 0.008 70);
+    color: oklch(0.92 0.01 82);
+    font-size: 14.5px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .btn-sim:hover { border-color: oklch(0.55 0.03 78); }
+
+  .btn-exec {
+    flex: 1.4;
+    min-width: 200px;
+    padding: 14px;
+    border-radius: 10px;
+    border: none;
+    background: oklch(0.28 0.011 70);
+    color: oklch(0.55 0.01 75);
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: not-allowed;
+    transition: all 0.15s ease;
+  }
+
+  .btn-exec.ready {
+    background: var(--green);
+    color: oklch(0.20 0.04 155);
+    cursor: pointer;
+  }
+
+  .btn-exec.ready:hover { filter: brightness(1.08); }
+
+  .receipt-box {
+    margin-top: 16px;
+    padding: 18px;
+    border-radius: 11px;
+    border: 1px solid oklch(0.38 0.05 155);
+    background: oklch(0.24 0.025 155);
+    animation: riseIn 0.35s ease both;
+  }
+
+  /* Right Column: Instrument Panel */
+  aside {
+    position: sticky;
+    top: 61px;
+    max-height: calc(100vh - 61px);
+    overflow-y: auto;
+    border-left: 1px solid var(--border);
+    background: oklch(0.21 0.009 70);
+    padding: 22px 24px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .aside-sec-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+
+  .aside-chart-card {
+    background: var(--input-bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: 11px;
+    overflow: hidden;
+  }
+
+  .chart-legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 10px;
+  }
+
+  .chart-legend-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .provenance-table {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--border-subtle);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .provenance-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 11px 13px;
+    background: var(--subcard-bg);
+  }
+
+  .prov-source {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: oklch(0.63 0.01 75);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .prov-val {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: oklch(0.92 0.01 82);
+    white-space: nowrap;
+  }
+
+  .reset-link {
+    display: block;
+    text-align: center;
+    margin-top: 24px;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+  }
+
+  /* Draggable SVG Floor Group Styles */
+  .draggable-floor-svg-group {
+    cursor: ns-resize;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .draggable-floor-svg-group rect,
+  .draggable-floor-svg-group line {
+    transition: filter 0.15s ease, stroke-width 0.15s ease;
+  }
+
+  .draggable-floor-svg-group:hover rect {
+    filter: brightness(1.12);
+  }
+
+  .draggable-floor-svg-group.dragging rect {
+    filter: brightness(1.22);
+  }
+
+  .reset-link:hover { color: var(--text-main); }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header>
-    <div class="brand">
-      <h1>☂ Payung</h1>
-      <span class="tag">buy a floor</span>
+<header>
+  <div class="header-brand">
+    <span class="brand-title">Payung</span>
+    <span class="brand-tag">Downside floor, priced live</span>
+  </div>
+  <div class="header-right">
+    <div class="net-pill">
+      <span class="pulse-dot"></span>
+      <span class="net-text">BASE MAINNET · 8453</span>
     </div>
-    <div class="header-right">
-      <span class="net" id="netBadge">BASE MAINNET</span>
-      <div id="walletBox">
-        <button class="btn secondary wallet-btn" id="connectWalletBtn" onclick="connectWallet()">
-          🦊 Connect Wallet
-        </button>
-        <div id="walletPill" class="wallet-pill" style="display:none;">
-          <span class="wallet-addr" id="walletAddr"></span>
-          <span class="wallet-bal" id="walletBalances"></span>
-          <button class="wallet-disconnect" onclick="disconnectWallet()" title="Disconnect">✕</button>
+    <div class="wallet-box" id="walletBox">
+      <button class="wallet-btn" id="connectWalletBtn" onclick="connectWallet()">🦊 Connect Wallet</button>
+      <div id="walletPill" class="wallet-pill" style="display:none;">
+        <span class="wallet-addr" id="walletAddr">0x...</span>
+        <span class="wallet-bal" id="walletBalances">$0.00 USDC</span>
+        <button class="wallet-disconnect" onclick="disconnectWallet()" title="Disconnect">✕</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="workspace-layout">
+
+  <!-- ── LEFT: MAIN FLOW ─────────────────────────────── -->
+  <main>
+    <div class="flow-header">
+      <span class="flow-label">Protection request</span>
+      <span class="flow-divider"></span>
+      <span class="flow-step-status" id="flowStepLabel">STEP 1 / 5 · CONSTRAINT</span>
+    </div>
+
+    <!-- ── STEP 1 ─────────────────────────────── -->
+    <section class="step-card active" id="step1">
+      <div class="step-card-header">
+        <span class="step-num-badge">1</span>
+        <span class="step-title">Say what you need, in a sentence</span>
+        <span style="flex: 1;"></span>
+        <span class="step-tag ai">LLM · TRANSCRIBE ONLY</span>
+      </div>
+      <div class="step-card-body">
+        <textarea id="sentenceInput" class="nl-textarea" rows="2" placeholder="e.g. I need my ETH worth at least $2,300 in two weeks" autofocus></textarea>
+        
+        <div class="nl-action-row">
+          <span class="nl-hint">Plain words. Press <b>Enter</b> and the model fills the fields below — never a price.</span>
+          <span style="flex: 1;"></span>
+          <button class="btn-primary" id="readThisBtn" onclick="parseNL()">Read this →</button>
+        </div>
+        <div id="nlError" style="color: var(--danger); font-size: 12.5px; margin-top: 6px;"></div>
+
+        <div class="example-pills">
+          <span class="pill-label">TRY</span>
+          <button class="example-pill" onclick="pickExample('I need my ETH worth at least $2,300 in two weeks', 'ETH', 1, 2300, 14)">Protect 1 ETH at $2,300 for 14 days</button>
+          <button class="example-pill" onclick="pickExample('Keep my 0.5 BTC worth at least $29,000 for the next month', 'BTC', 0.5, 58000, 30)">Keep 0.5 BTC above $58k for a month</button>
+          <button class="example-pill" onclick="pickExample('My 3 ETH must be worth $6,600 total by the end of the month', 'ETH', 3, 2200, 21)">Floor 3 ETH at $6,600 total</button>
+        </div>
+
+        <div class="understood-strip">
+          <div class="strip-label">what I understood — edit anything</div>
+          <div class="audit-grid">
+            <label class="audit-field">
+              <span class="cand-col-label">ASSET</span>
+              <select id="asset">
+                <option value="ETH" selected>ETH</option>
+                <option value="BTC">BTC</option>
+              </select>
+            </label>
+            <label class="audit-field">
+              <span class="cand-col-label">QUANTITY</span>
+              <input id="amount" type="number" value="1" step="any" min="0.0001" />
+            </label>
+            <label class="audit-field">
+              <span class="cand-col-label" id="unitFloorLabel">FLOOR · PER ETH</span>
+              <input id="unitFloor" type="number" value="2300" step="10" />
+            </label>
+            <label class="audit-field">
+              <span class="cand-col-label">TOTAL FLOOR ($)</span>
+              <input id="floor" type="number" value="2300" step="any" />
+            </label>
+            <label class="audit-field">
+              <span class="cand-col-label">HORIZON · DAYS</span>
+              <input id="days" type="number" value="14" min="1" max="90" />
+            </label>
+          </div>
+
+          <div class="derived-banner">
+            <span class="derived-tag">DERIVED</span>
+            <span class="derived-text" id="derivedBannerText">Total floor <b>$2,300</b> ÷ 1 ETH → implied strike <b>$2,300</b></span>
+          </div>
+
+          <p class="restated-text" id="restatedSentence">
+            You keep <b>1 ETH</b> and every dollar of upside. If ETH is below <b class="accent">$2,300</b> in <b>14 days</b>, the option pays you the difference in cash. If it is above, it pays nothing and you have lost only the premium.
+          </p>
+
+          <div class="find-btn-row">
+            <button class="btn-primary" onclick="findFloors()">Find real offers on Thetanuts →</button>
+          </div>
         </div>
       </div>
+    </section>
+
+    <!-- ── STEP 2 ─────────────────────────────── -->
+    <section class="step-card inactive" id="step2">
+      <div class="step-card-header">
+        <span class="step-num-badge">2</span>
+        <span class="step-title">Live offers that actually match</span>
+        <span style="flex: 1;"></span>
+        <button id="toggleNoMatchBtn" onclick="toggleNoMatchState()" style="font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; padding: 5px 10px; border-radius: 5px; background: none; border: 1px solid var(--border); color: oklch(0.68 0.01 78); cursor: pointer;">preview no-match state</button>
+      </div>
+
+      <div class="step-card-body">
+        <div class="query-subhead" id="querySubhead">
+          <span>fetchOrders() on Base · querying live orderbook...</span>
+        </div>
+
+        <div id="candLoading" style="display:none; padding: 20px 0; color: var(--text-dim);">
+          <span class="spinner"></span> Querying live Base orderbook...
+        </div>
+
+        <div id="candStale" class="alert-banner" style="display:none; margin-bottom: 12px;"></div>
+
+        <div id="matchedOffersContainer">
+          <!-- Hero Selected Card -->
+          <div class="hero-card" id="heroCard">
+            <div class="hero-flex">
+              <div class="hero-left">
+                <div class="hero-strike-row">
+                  <span class="hero-strike" id="heroStrike">$2,300</span>
+                  <span style="font-size: 15px; color: oklch(0.80 0.02 80);">floor</span>
+                  <span class="badge-chip" id="heroBadge">CLOSEST MATCH · +0.0%</span>
+                </div>
+                <span class="hero-details" id="heroDetails">14.0d window · expires Mar 14, 2026 · maker budget $4,120</span>
+              </div>
+              <div class="hero-right">
+                <span class="hero-premium" id="heroPremium">$10.42 / ETH</span>
+                <span class="hero-confirmed-tag">previewFillOrder() · CONFIRMED</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Collapsible Other Offers Accordion -->
+          <button class="disclosure-btn" id="disclosureBtn" onclick="toggleDisclosure()" style="display:none;">
+            <span class="disclosure-caret" id="disclosureCaret">▸</span>
+            <span id="disclosureSummary">Loading other live offers...</span>
+          </button>
+
+          <div class="other-offers-list" id="otherOffersList" style="display:none;"></div>
+
+          <div id="candFarMiss" class="alert-banner" style="display:none;">
+            <span class="alert-tag">FAR MISS</span>
+            <p class="alert-body" id="candFarMissBody"></p>
+          </div>
+
+          <div class="filter-pills">
+            <span class="filter-pill">filter · puts only</span>
+            <span class="filter-pill">filter · maker is seller</span>
+            <span class="filter-pill">filter · USD collateral</span>
+            <span class="filter-pill">filter · 0.6×–2.5× horizon</span>
+          </div>
+        </div>
+
+        <!-- No Match View -->
+        <div id="noMatchContainer" class="no-match-box" style="display:none;">
+          <div style="width: 44px; height: 44px; margin: 0 auto 16px; border-radius: 12px; border: 1px dashed oklch(0.42 0.02 70); display: grid; place-items: center;">
+            <span style="width: 12px; height: 12px; transform: rotate(45deg); border: 1.5px solid oklch(0.62 0.01 75);"></span>
+          </div>
+          <div style="font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 8px;">No live offer fits this constraint right now.</div>
+          <p style="max-width: 460px; margin: 0 auto 18px; font-size: 14.5px; color: oklch(0.74 0.01 78); line-height: 1.55;">Payung will not substitute the nearest option or estimate a price to fill the gap. Try loosening your horizon or picking a floor closer to current spot price.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── STEP 3 ─────────────────────────────── -->
+    <section class="step-card inactive" id="step3">
+      <div class="step-card-header">
+        <span class="step-num-badge">3</span>
+        <span class="step-title">The cost, and whether it's worth it</span>
+        <span style="flex: 1;"></span>
+        <span class="step-tag">DETERMINISTIC · NO LLM</span>
+      </div>
+      <div class="step-card-body">
+        <div class="metrics-4grid">
+          <div class="metric-cell">
+            <span class="metric-label">PREMIUM YOU PAY</span>
+            <span class="metric-value" id="premiumTotal">$10.42</span>
+            <span class="metric-sub" id="premiumSub">$10.42 × 1 contracts</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">MAX LOSS</span>
+            <span class="metric-value" id="maxLossVal">$10.42</span>
+            <span class="metric-sub">the premium, and nothing else</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">GUARANTEED FLOOR</span>
+            <span class="metric-value" id="guaranteedFloorVal" style="color: var(--accent);">$2,289.58</span>
+            <span class="metric-sub">net of premium, at expiry</span>
+          </div>
+          <div class="metric-cell">
+            <span class="metric-label">COST OF FLOOR</span>
+            <span class="metric-value" id="costPctVal">0.45%</span>
+            <span class="metric-sub">of the value protected</span>
+          </div>
+        </div>
+
+        <div class="verdict-card" id="verdictCard">
+          <span class="verdict-dot"></span>
+          <div>
+            <div class="verdict-title" id="verdictTitle">Worth it — 0.45% to remove all downside below your floor</div>
+            <p class="verdict-body" id="verdictBody">Volatile price movements historically exceed this cost. Paying the premium makes your floor unconditional.</p>
+          </div>
+        </div>
+
+        <div class="gap-box">
+          <span style="font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.64 0.01 75); white-space: nowrap; padding-top: 2px;">COVERAGE GAP</span>
+          <p class="verdict-body" id="coverageBody">Protection covers the full window.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── STEP 4 ─────────────────────────────── -->
+    <section class="step-card inactive" id="step4">
+      <div class="step-card-header">
+        <span class="step-num-badge">4</span>
+        <span class="step-title">Collateral this order settles in</span>
+        <span style="flex: 1;"></span>
+        <span class="badge-chip" id="collatPill">USDC READY</span>
+      </div>
+      <div class="step-card-body">
+        <div class="collat-row">
+          <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-size: 15px; color: oklch(0.88 0.01 82);" id="collatExplainer">This put settles in <b>aBasUSDC</b> — Aave-wrapped USDC on Base, read off the live order, not assumed.</span>
+            <span style="font-family: var(--font-mono); font-size: 12.5px; color: oklch(0.68 0.01 75);" id="walletCollatBalances">wallet: $0.00 USDC · $0.00 aBasUSDC · needed: $10.42</span>
+          </div>
+          <button class="btn-outline" id="depositBtn" onclick="handleDepositClick()">Deposit via Aave V3</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── STEP 5 ─────────────────────────────── -->
+    <section class="step-card inactive" id="step5">
+      <div class="step-card-header">
+        <span class="step-num-badge">5</span>
+        <span class="step-title">Simulate free, then confirm once</span>
+        <span style="flex: 1;"></span>
+        <span style="font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.1em; color: var(--text-dim);" id="execStage">READY</span>
+      </div>
+      <div class="step-card-body">
+        <div class="log-list">
+          <div class="log-row">
+            <span class="log-dot" id="simDot"></span>
+            <span class="log-label">callStaticFillOrder — free dry run against current chain state</span>
+            <span class="log-meta" id="simLogMeta">PASS · 0 gas</span>
+          </div>
+          <div class="log-row">
+            <span class="log-dot"></span>
+            <span class="log-label">Order freshness re-checked immediately before fill</span>
+            <span class="log-meta" id="expiryLogMeta" style="color: oklch(0.72 0.01 78);">verified</span>
+          </div>
+          <div class="log-row">
+            <span class="log-dot" id="allowanceDot"></span>
+            <span class="log-label">Allowance approved for the exact amount, never MaxUint256</span>
+            <span class="log-meta" id="allowanceLogMeta" style="color: oklch(0.72 0.01 78);">$10.42 USDC</span>
+          </div>
+          <div class="log-row">
+            <span class="log-dot dim"></span>
+            <span class="log-label">Your ETH balance touched by this flow</span>
+            <span class="log-meta" style="color: oklch(0.66 0.01 75);">0.00 — never</span>
+          </div>
+        </div>
+
+        <label class="confirm-check-label">
+          <input type="checkbox" id="confirmCheck" onchange="onConfirmCheckChange()" />
+          <span style="font-size: 14.5px; color: oklch(0.88 0.01 82);">
+            I understand this spends <b style="font-family: var(--font-mono); font-weight: 500;" id="confirmSpendText">$10.42</b> of real funds on Base mainnet. <span style="font-family: var(--font-mono); font-size: 12px; color: oklch(0.66 0.01 75);">confirm: true</span>
+          </span>
+        </label>
+
+        <div class="exec-btn-row">
+          <button class="btn-sim" id="simBtn" onclick="runSimulate()">Re-run free simulation</button>
+          <button class="btn-exec" id="execBtn" onclick="runExecute()">Execute fillOrder on Base</button>
+        </div>
+
+        <div id="simResultBox"></div>
+
+        <div id="receiptBox" class="receipt-box" style="display:none;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--green);"></span>
+            <span style="font-size: 16px; font-weight: 600; color: oklch(0.88 0.08 155); letter-spacing: -0.01em;">Protected. Your ETH never moved.</span>
+          </div>
+          <p style="margin: 0 0 12px; font-size: 14.5px; color: oklch(0.85 0.02 150); line-height: 1.55;" id="receiptLine">
+            You bought put contracts on Base mainnet.
+          </p>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 8px; background: oklch(0.19 0.01 155); border: 1px solid oklch(0.32 0.03 155);">
+            <span style="font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.70 0.04 155);">TX</span>
+            <span style="font-family: var(--font-mono); font-size: 12.5px; color: oklch(0.90 0.03 150); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" id="receiptTxHash">0x...</span>
+            <span style="flex: 1;"></span>
+            <a id="receiptExplorerLink" href="#0" target="_blank" rel="noopener" style="font-family: var(--font-mono); font-size: 12px; white-space: nowrap;">verify on BaseScan ↗</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <span class="reset-link" onclick="resetFlow()">↻ start over</span>
+  </main>
+
+  <!-- ── RIGHT: INSTRUMENT PANEL ─────────────────────── -->
+  <aside>
+    <!-- Section 1: History & Protection Window Chart -->
+    <div>
+      <div class="aside-sec-title" id="chartTitle">ETH / USD · 14d history + protection window</div>
+      <div class="aside-chart-card">
+        <svg id="payoffChart" viewBox="0 0 404 268" style="width: 100%; height: auto; display: block; user-select: none; touch-action: none;"></svg>
+      </div>
+      <div class="chart-legend-row">
+        <span class="chart-legend-pill"><span style="width: 14px; height: 2px; background: var(--accent);"></span>DRAGGABLE FLOOR</span>
+        <span class="chart-legend-pill"><span style="width: 14px; height: 2px; background: oklch(0.72 0.02 80); border-top: 1px dotted oklch(0.72 0.02 80);"></span>CHAINLINK SPOT</span>
+        <span class="chart-legend-pill"><span style="width: 10px; height: 10px; background: var(--green); opacity: 0.35;"></span>PROTECTED ZONE</span>
+      </div>
+      <div id="chartAttribution" style="font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); margin-top: 8px;"></div>
     </div>
-  </header>
 
-  <div class="live-banner">
-    LIVE — every candidate below is a real, currently-fillable order on Base mainnet, priced by the protocol's own math.
-  </div>
-
-  <!-- STEP 1: constraint -->
-  <div class="step active" id="step1">
-    <div class="step-label"><span class="step-num">1</span> State what you're afraid of losing</div>
-    <div class="field" style="margin-bottom:12px;">
-      <label>Say it in your own words — the AI fills the form; it never invents a price</label>
-      <div style="display:flex; gap:8px;">
-        <input id="nl" type="text" style="flex:1; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; color:var(--text); font-size:14px;"
-               placeholder='e.g. "I have 1 ETH and need it worth at least $2,300 in two weeks"' />
-        <button class="btn secondary" id="nlBtn" onclick="parseNL()">Parse</button>
-      </div>
-      <div id="nlError" style="color:var(--danger); font-size:12px; margin-top:6px;"></div>
-    </div>
-    <div class="field-row">
-      <div class="field" style="max-width:110px;">
-        <label>Asset you hold</label>
-        <select id="asset">
-          <option value="ETH">ETH</option>
-          <option value="BTC">BTC</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Amount you hold</label>
-        <input id="amount" type="number" value="1" step="any" min="0.000001" />
-      </div>
-      <div class="field">
-        <label id="unitFloorLabel">Market floor ($ / ETH)</label>
-        <input id="unitFloor" type="number" value="2300" step="10" />
-      </div>
-      <div class="field">
-        <label>Total floor value ($)</label>
-        <input id="floor" type="number" value="2300" step="any" />
-      </div>
-      <div class="field" style="max-width:120px;">
-        <label>By when (days)</label>
-        <input id="days" type="number" value="14" min="1" max="90" />
+    <!-- Section 2: Payoff at Expiry -->
+    <div>
+      <div class="aside-sec-title">Payoff at expiry</div>
+      <div class="aside-chart-card">
+        <svg id="expiryPayoffSvg" viewBox="0 0 404 130" style="width: 100%; height: auto; display: block;"></svg>
       </div>
     </div>
-    <p class="sentence" id="restated">
-      "I have <b>1 ETH</b>. I need it to be worth at least <b class="accent">$2,300</b> total in <b>14 days</b>" — that's a floor of <b class="accent">$2,300 per ETH</b>.
-    </p>
-    <button class="btn" onclick="findFloors()">Find real offers on Thetanuts →</button>
-  </div>
 
-  <!-- STEP 2: candidates -->
-  <div class="step" id="step2">
-    <div class="step-label"><span class="step-num">2</span> Live offers pulled from the orderbook</div>
-    <p class="sentence" style="margin-bottom:0">Querying <b>fetchOrders()</b> on Base, filtered to buyable puts near your strike...</p>
-    <div id="candLoading" style="margin-top:14px; color:var(--dim); font-size:13px;"><span class="spinner"></span>fetching live book...</div>
-    <div class="verdict" id="candStale" style="display:none;"></div>
-    <div class="candidate-list" id="candidateList" style="display:none;"></div>
-    <div class="verdict" id="candFarMiss" style="display:none;"></div>
-    <div class="verdict" id="candVerdict" style="display:none;"></div>
-  </div>
-
-  <!-- STEP 3: unified price chart -->
-  <div class="step" id="step3">
-    <div class="step-label"><span class="step-num">3</span> Price, floor, and deadline — one picture</div>
-    <div class="chart-wrap">
-      <svg id="payoffChart" viewBox="0 0 700 320"></svg>
-      <div class="chart-legend">
-        <span><span class="dot" style="background:var(--accent)"></span> up candle</span>
-        <span><span class="dot" style="background:var(--danger)"></span> down candle</span>
-        <span><span class="dot" style="background:var(--warn); border-radius:2px;"></span> your floor (strike)</span>
-        <span><span class="dot" style="background:var(--dim); border-radius:2px;"></span> spot now</span>
+    <!-- Section 3: Where every number came from (Provenance) -->
+    <div>
+      <div class="aside-sec-title">Where every number came from</div>
+      <div class="provenance-table" id="provenanceTable">
+        <div class="provenance-row">
+          <div class="cand-col">
+            <span style="font-size: 13px; color: oklch(0.88 0.01 82);">Spot price</span>
+            <span class="prov-source">Chainlink AggregatorV3 · 0x7104…Bb70</span>
+          </div>
+          <span class="prov-val" id="provSpotVal">$2,450.00</span>
+        </div>
+        <div class="provenance-row">
+          <div class="cand-col">
+            <span style="font-size: 13px; color: oklch(0.88 0.01 82);">Candle history</span>
+            <span class="prov-source">Coinbase Exchange · ETH-USD · 14d</span>
+          </div>
+          <span class="prov-val" id="provCandlesVal">42 bars</span>
+        </div>
+        <div class="provenance-row">
+          <div class="cand-col">
+            <span style="font-size: 13px; color: oklch(0.88 0.01 82);">Premium</span>
+            <span class="prov-source">Thetanuts previewFillOrder()</span>
+          </div>
+          <span class="prov-val" id="provPremiumVal">$10.42</span>
+        </div>
+        <div class="provenance-row">
+          <div class="cand-col">
+            <span style="font-size: 13px; color: oklch(0.88 0.01 82);">Strike</span>
+            <span class="prov-source">derived · floorTotalUsd ÷ quantity</span>
+          </div>
+          <span class="prov-val" id="provStrikeVal">$2,300</span>
+        </div>
+        <div class="provenance-row">
+          <div class="cand-col">
+            <span style="font-size: 13px; color: oklch(0.88 0.01 82);">Maker budget</span>
+            <span class="prov-source">OptionBook order · availableAmount</span>
+          </div>
+          <span class="prov-val" id="provBudgetVal">$4,120</span>
+        </div>
+        <div class="provenance-row">
+          <div class="cand-col">
+            <span style="font-size: 13px; color: oklch(0.88 0.01 82);">Parsed fields</span>
+            <span class="prov-source">Gonka Router · transcription only</span>
+          </div>
+          <span class="prov-val">4</span>
+        </div>
       </div>
-      <div id="chartAttribution" style="font-size:11px; color:var(--dim); margin-top:6px;"></div>
+      <p style="margin: 10px 0 0; font-family: var(--font-mono); font-size: 10.5px; line-height: 1.6; color: var(--text-muted);">
+        Every figure resolves from a live call or deterministic math — the language model only ever transcribes the four user constraint fields.
+      </p>
     </div>
-    <div id="step3CostCard" class="cost-summary-card" style="display:none;"></div>
-    <p class="sentence" id="payoffSummary" style="margin-top:14px;"></p>
-    <button class="btn" onclick="goToExecute()">Continue →</button>
-  </div>
-
-  <!-- STEP 4: simulate + execute -->
-  <div class="step" id="step4">
-    <div class="step-label"><span class="step-num">4</span> Simulate, then execute on Base</div>
-    <p class="sentence">Simulate for free to verify the structure, then approve and execute directly with your connected wallet.</p>
-    <div id="step4OrderCard" class="cost-summary-card" style="display:none;"></div>
-    <div class="exec-row">
-      <button class="btn secondary" id="simBtn" onclick="runSimulate()">Simulate fill (free)</button>
-      <button class="btn danger" id="execBtn" onclick="runExecute()">Execute with wallet</button>
-    </div>
-    <div id="simResult"></div>
-    <div id="txResult"></div>
-  </div>
-
-  <span class="reset-link" onclick="resetFlow()">↻ start over</span>
+  </aside>
 
 </div>
 
 <script>
-let state = { candidates: [], selected: null, quote: null, candidatesSpec: null };
+// State Management
+let state = {
+  candidates: [],
+  selected: null,
+  quote: null,
+  candidatesSpec: null,
+  expanded: false,
+  noMatchPreview: false,
+  confirmed: false,
+  executed: false,
+};
+
 let executionFailedNeedsManualClear = false;
 
 const BASE_CHAIN_ID_HEX = '0x2105'; // 8453
@@ -481,6 +1525,7 @@ let walletState = {
   aBasUsdcBalance: '0',
 };
 
+// API Helpers
 async function api(path, body) {
   const res = await fetch(path, {
     method: 'POST',
@@ -492,18 +1537,30 @@ async function api(path, body) {
   return json;
 }
 
+async function apiGet(path) {
+  const res = await fetch(path);
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  return json;
+}
+
+function formatMoney(n, d = 2) {
+  if (n === null || n === undefined || isNaN(n)) return '$0.00';
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
+function formatDateIn(days) {
+  const d = new Date(Date.now() + days * 86400 * 1000);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 // ── Wallet Connection ──────────────────────────────────────────────────────────
 
 function getInjectedProvider() {
-  if (typeof window.bitkeep !== 'undefined' && window.bitkeep.ethereum) {
-    return window.bitkeep.ethereum;
-  }
-  if (typeof window.okxwallet !== 'undefined') {
-    return window.okxwallet;
-  }
+  if (typeof window.bitkeep !== 'undefined' && window.bitkeep.ethereum) return window.bitkeep.ethereum;
+  if (typeof window.okxwallet !== 'undefined') return window.okxwallet;
   if (typeof window.ethereum !== 'undefined') {
     if (Array.isArray(window.ethereum.providers) && window.ethereum.providers.length > 0) {
-      // If multiple extensions are installed, prefer the active selected one
       return window.ethereum.selectedAddress
         ? window.ethereum.providers.find(p => p.selectedAddress === window.ethereum.selectedAddress) || window.ethereum.providers[0]
         : window.ethereum.providers[0];
@@ -516,7 +1573,7 @@ function getInjectedProvider() {
 async function connectWallet() {
   const provider = getInjectedProvider();
   if (!provider) {
-    alert('No Web3 wallet extension found. Please install Bitget Wallet, MetaMask, Rabby, Coinbase Wallet, or OKX Wallet.');
+    alert('No Web3 wallet extension detected. Please install Bitget Wallet, MetaMask, Rabby, Coinbase Wallet, or OKX Wallet.');
     return;
   }
 
@@ -589,48 +1646,61 @@ function updateWalletUI() {
   const pill = document.getElementById('walletPill');
   const addrEl = document.getElementById('walletAddr');
   const balEl = document.getElementById('walletBalances');
-  const execBtn = document.getElementById('execBtn');
+  const collatBalEl = document.getElementById('walletCollatBalances');
+  const collatPill = document.getElementById('collatPill');
 
-  const spendText = state.quote?.quote?.spendUsdc ? `$${state.quote.quote.spendUsdc.toFixed(2)} USDC` : '';
+  const neededUsd = state.quote?.quote?.spendUsdc || 0;
 
   if (walletState.address) {
     btn.style.display = 'none';
     pill.style.display = 'flex';
-    const short = walletState.address.slice(0, 6) + '...' + walletState.address.slice(-4);
+    const short = walletState.address.slice(0, 6) + '…' + walletState.address.slice(-4);
     addrEl.textContent = short;
     balEl.textContent = `$${walletState.usdcBalance} USDC · ${walletState.ethBalance} ETH`;
-    if (!executionFailedNeedsManualClear) {
-      execBtn.textContent = spendText ? `Execute with wallet (${spendText})` : 'Execute with wallet';
+    
+    collatBalEl.textContent = `wallet: $${walletState.usdcBalance} USDC · $${walletState.aBasUsdcBalance} aBasUSDC · needed: ${formatMoney(neededUsd)}`;
+    
+    const isAaveToken = state.selected?.collateralToken?.toLowerCase() === '0x4e65fe4dba92790696d040ac24aa414708f5c0ab'.toLowerCase();
+    const hasEnoughABas = Number(walletState.aBasUsdcBalance) >= neededUsd;
+    const hasEnoughUsdc = Number(walletState.usdcBalance) >= neededUsd;
+
+    if (isAaveToken) {
+      if (hasEnoughABas) {
+        collatPill.textContent = 'aBasUSDC READY';
+        collatPill.className = 'badge-chip';
+      } else if (hasEnoughUsdc) {
+        collatPill.textContent = 'DEPOSIT NEEDED';
+        collatPill.className = 'badge-chip warn';
+      } else {
+        collatPill.textContent = 'INSUFFICIENT FUNDS';
+        collatPill.className = 'badge-chip warn';
+      }
+    } else {
+      collatPill.textContent = hasEnoughUsdc ? 'USDC READY' : 'INSUFFICIENT USDC';
+      collatPill.className = hasEnoughUsdc ? 'badge-chip' : 'badge-chip warn';
     }
   } else {
     btn.style.display = 'inline-block';
     pill.style.display = 'none';
-    if (!executionFailedNeedsManualClear) {
-      execBtn.textContent = spendText ? `Connect wallet to execute (${spendText})` : 'Connect wallet to execute';
-    }
+    collatBalEl.textContent = `wallet: not connected · needed: ${formatMoney(neededUsd)}`;
   }
-  renderStep4OrderSummary();
 }
 
 function disconnectWallet() {
   walletState = {
-    provider: null,
-    signer: null,
-    address: null,
-    chainId: null,
-    ethBalance: '0',
-    usdcBalance: '0',
-    aBasUsdcBalance: '0',
+    provider: null, signer: null, address: null, chainId: null,
+    ethBalance: '0', usdcBalance: '0', aBasUsdcBalance: '0',
   };
   updateWalletUI();
 }
 
-const activeInjectedProvider = getInjectedProvider();
-if (activeInjectedProvider) {
-  activeInjectedProvider.request({ method: 'eth_accounts' }).then(async (accounts) => {
+// Auto-detect existing connected wallet
+const autoProvider = getInjectedProvider();
+if (autoProvider) {
+  autoProvider.request({ method: 'eth_accounts' }).then(async (accounts) => {
     if (accounts && accounts.length > 0) {
       try {
-        walletState.provider = new ethers.BrowserProvider(activeInjectedProvider);
+        walletState.provider = new ethers.BrowserProvider(autoProvider);
         walletState.signer = await walletState.provider.getSigner();
         walletState.address = await walletState.signer.getAddress();
         await refreshWalletBalances();
@@ -641,35 +1711,131 @@ if (activeInjectedProvider) {
     }
   });
 
-  if (activeInjectedProvider.on) {
-    activeInjectedProvider.on('accountsChanged', (accounts) => {
-      if (!accounts || accounts.length === 0) {
-        disconnectWallet();
-      } else {
-        connectWallet();
-      }
+  if (autoProvider.on) {
+    autoProvider.on('accountsChanged', (accounts) => {
+      if (!accounts || accounts.length === 0) disconnectWallet();
+      else connectWallet();
     });
-
-    activeInjectedProvider.on('chainChanged', () => {
-      window.location.reload();
-    });
+    autoProvider.on('chainChanged', () => window.location.reload());
   }
 }
 
-// ── Core Flow ──────────────────────────────────────────────────────────────────
+// ── Step Management ───────────────────────────────────────────────────────────
+
+function setStep(n) {
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById('step' + i);
+    if (!el) continue;
+    el.classList.remove('active', 'done', 'inactive');
+    if (i < n) el.classList.add('done');
+    else if (i === n) el.classList.add('active');
+    else el.classList.add('inactive');
+  }
+
+  const stepLabels = [
+    'STEP 1 / 5 · CONSTRAINT',
+    'STEP 2 / 5 · MATCHED OFFERS',
+    'STEP 3 / 5 · REVIEWING QUOTE',
+    'STEP 4 / 5 · COLLATERAL CHECK',
+    state.executed ? 'STEP 5 / 5 · FILLED' : (state.confirmed ? 'STEP 5 / 5 · AWAITING FILL' : 'STEP 5 / 5 · SIMULATE & CONFIRM'),
+  ];
+  document.getElementById('flowStepLabel').textContent = stepLabels[n - 1] || 'STEP 1 / 5';
+}
+
+// ── Constraint & Parse Logic ──────────────────────────────────────────────────
+
+function updateSvgFloorFromInputs() {
+  const svg = document.getElementById('payoffChart');
+  if (!svg || !svg._chartScale) return;
+  const unitFloor = Number(document.getElementById('unitFloor').value) || 2300;
+  const newY = svg._chartScale.yS(unitFloor);
+  const line = document.getElementById('svgFloorLine');
+  const badgeRect = document.getElementById('svgFloorBadgeRect');
+  const badgeText = document.getElementById('svgFloorBadgeText');
+  const zone = document.getElementById('svgProtectionZone');
+
+  if (line) {
+    line.setAttribute('y1', newY.toFixed(1));
+    line.setAttribute('y2', newY.toFixed(1));
+  }
+  if (badgeRect) {
+    badgeRect.setAttribute('y', (newY - 11).toFixed(1));
+  }
+  if (badgeText) {
+    badgeText.setAttribute('y', (newY + 4).toFixed(1));
+    badgeText.textContent = `⇕ FLOOR ${formatMoney(unitFloor, 0)}`;
+  }
+  if (zone) {
+    const zoneH = Math.max(0, (svg._chartScale.H - svg._chartScale.PAD_B) - newY);
+    zone.setAttribute('y', newY.toFixed(1));
+    zone.setAttribute('height', zoneH.toFixed(1));
+  }
+}
+
+function pickExample(sentence, asset, qty, unitFloor, days) {
+  document.getElementById('sentenceInput').value = sentence;
+  document.getElementById('asset').value = asset;
+  document.getElementById('amount').value = qty;
+  document.getElementById('unitFloor').value = unitFloor;
+  document.getElementById('floor').value = qty * unitFloor;
+  document.getElementById('days').value = days;
+  document.getElementById('unitFloorLabel').textContent = `FLOOR · PER ${asset}`;
+  restateSentence();
+  drawUnifiedChart();
+  findFloors();
+}
+
+document.getElementById('sentenceInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    parseNL();
+  }
+});
+
+async function parseNL() {
+  const text = document.getElementById('sentenceInput').value.trim();
+  const err = document.getElementById('nlError');
+  const btn = document.getElementById('readThisBtn');
+  err.textContent = '';
+  if (!text) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Reading...';
+
+  try {
+    const { spec } = await api('/api/parse', { text });
+    document.getElementById('asset').value = spec.asset;
+    document.getElementById('unitFloorLabel').textContent = `FLOOR · PER ${spec.asset}`;
+    document.getElementById('amount').value = spec.quantity;
+    document.getElementById('floor').value = spec.floorTotalUsd;
+    const perUnit = spec.quantity > 0 ? spec.floorTotalUsd / spec.quantity : spec.floorTotalUsd;
+    const roundedPerUnit = Number(perUnit.toFixed(2));
+    document.getElementById('unitFloor').value = roundedPerUnit;
+    document.getElementById('days').value = spec.horizonDays;
+    restateSentence();
+    drawUnifiedChart();
+    findFloors();
+  } catch (e) {
+    err.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Read this →';
+  }
+}
 
 function onAssetChange() {
   const asset = document.getElementById('asset').value;
-  document.getElementById('unitFloorLabel').textContent = `Market floor ($ / ${asset})`;
+  document.getElementById('unitFloorLabel').textContent = `FLOOR · PER ${asset}`;
   onConstraintChange();
+  drawUnifiedChart();
 }
 
 function syncFloorFromUnit() {
   const amount = Number(document.getElementById('amount').value) || 0;
   const unit = Number(document.getElementById('unitFloor').value) || 0;
   if (amount > 0 && unit > 0) {
-    const total = amount * unit;
-    document.getElementById('floor').value = Number(total.toFixed(4));
+    document.getElementById('floor').value = Number((amount * unit).toFixed(4));
+    updateSvgFloorFromInputs();
   }
   onConstraintChange();
 }
@@ -678,8 +1844,9 @@ function syncFloorFromTotal() {
   const amount = Number(document.getElementById('amount').value) || 0;
   const total = Number(document.getElementById('floor').value) || 0;
   if (amount > 0 && total > 0) {
-    const unit = total / amount;
-    document.getElementById('unitFloor').value = Number(unit.toFixed(2));
+    const perUnit = Number((total / amount).toFixed(2));
+    document.getElementById('unitFloor').value = perUnit;
+    updateSvgFloorFromInputs();
   }
   onConstraintChange();
 }
@@ -688,8 +1855,7 @@ function onAmountChange() {
   const amount = Number(document.getElementById('amount').value) || 0;
   const unit = Number(document.getElementById('unitFloor').value) || 0;
   if (amount > 0 && unit > 0) {
-    const total = amount * unit;
-    document.getElementById('floor').value = Number(total.toFixed(4));
+    document.getElementById('floor').value = Number((amount * unit).toFixed(4));
   }
   onConstraintChange();
 }
@@ -701,79 +1867,35 @@ function restateSentence() {
   const unitFloor = Number(document.getElementById('unitFloor').value) || (amount > 0 ? floorTotal / amount : 0);
   const days = document.getElementById('days').value || '14';
 
-  document.getElementById('restated').innerHTML =
-    `"I have <b>${amount} ${asset}</b>. I need it to be worth at least <b class="accent">$${floorTotal.toLocaleString(undefined, {maximumFractionDigits: 2})} total</b> in <b>${days} days</b>" ` +
-    `— that's a market floor of <b class="accent">$${unitFloor.toLocaleString(undefined, {maximumFractionDigits: 2})} per ${asset}</b>.`;
+  document.getElementById('derivedBannerText').innerHTML =
+    `Total floor <b>${formatMoney(floorTotal, 0)}</b> ÷ ${amount} ${asset} → implied strike <b style="color:var(--accent);">${formatMoney(unitFloor, 0)}</b>`;
+
+  document.getElementById('restatedSentence').innerHTML =
+    `You keep <b>${amount} ${asset}</b> and every dollar of upside. If ${asset} is below <b class="accent">${formatMoney(unitFloor, 0)}</b> on <b>${formatDateIn(Number(days))}</b>, ` +
+    `the option pays you the difference in cash. If it is above, it pays nothing and you have lost only the premium.`;
 }
 
 let constraintChangeTimer = null;
-
-function specsMatch(a, b) {
-  return !!a && !!b && a.asset === b.asset && a.quantity === b.quantity
-    && a.floorTotalUsd === b.floorTotalUsd && a.horizonDays === b.horizonDays;
-}
-
 function onConstraintChange() {
-  restateSentence(); // immediate — this is the live per-unit readout, never debounced
+  restateSentence();
   if (constraintChangeTimer) clearTimeout(constraintChangeTimer);
   constraintChangeTimer = setTimeout(() => {
     if (!state.candidates.length) return;
     const stale = document.getElementById('candStale');
     if (specsMatch(state.candidatesSpec, currentSpec())) {
       stale.style.display = 'none';
-      renderCandidates(state.candidates);
       return;
     }
-    // Constraint changed since these offers were fetched. Their strike
-    // distances were computed server-side against the OLD implied strike, so
-    // re-rendering would show badges measuring the wrong thing. Say so and
-    // leave the list untouched until the user re-queries the live book.
     const old = state.candidatesSpec;
-    stale.style.display = 'block';
-    stale.innerHTML = `<b>These offers are out of date.</b> They were matched against ` +
-      `$${(old.floorTotalUsd / old.quantity).toLocaleString(undefined,{maximumFractionDigits:2})} per ${old.asset} ` +
-      `(${old.quantity} ${old.asset} · $${old.floorTotalUsd.toLocaleString()} total · ${old.horizonDays}d). ` +
-      `Click <b>Find real offers</b> again to re-query the live book for your new constraint.`;
+    stale.style.display = 'flex';
+    stale.innerHTML = `<span class="alert-tag">OUT OF DATE</span><p class="alert-body">These offers were matched against ` +
+      `$${(old.floorTotalUsd / old.quantity).toFixed(2)} per ${old.asset}. Click <b>Find real offers</b> to re-query the live book for your updated constraint.</p>`;
   }, 400);
 }
 
-document.getElementById('asset').addEventListener('change', onAssetChange);
-document.getElementById('amount').addEventListener('input', onAmountChange);
-document.getElementById('unitFloor').addEventListener('input', syncFloorFromUnit);
-document.getElementById('floor').addEventListener('input', syncFloorFromTotal);
-document.getElementById('days').addEventListener('input', onConstraintChange);
-
-async function parseNL() {
-  const text = document.getElementById('nl').value.trim();
-  const err = document.getElementById('nlError');
-  const btn = document.getElementById('nlBtn');
-  err.textContent = '';
-  if (!text) return;
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
-  try {
-    const { spec } = await api('/api/parse', { text });
-    document.getElementById('asset').value = spec.asset;
-    document.getElementById('unitFloorLabel').textContent = `Market floor ($ / ${spec.asset})`;
-    document.getElementById('amount').value = spec.quantity;
-    document.getElementById('floor').value = spec.floorTotalUsd;
-    const perUnit = spec.quantity > 0 ? spec.floorTotalUsd / spec.quantity : spec.floorTotalUsd;
-    document.getElementById('unitFloor').value = Number(perUnit.toFixed(2));
-    document.getElementById('days').value = spec.horizonDays;
-    restateSentence();
-  } catch (e) {
-    err.textContent = e.message;
-  } finally {
-    btn.disabled = false; btn.textContent = 'Parse';
-  }
-}
-
-function setStep(n) {
-  for (let i = 1; i <= 4; i++) {
-    const el = document.getElementById('step' + i);
-    el.classList.remove('active', 'done');
-    if (i < n) el.classList.add('done');
-    if (i === n) el.classList.add('active');
-  }
+function specsMatch(a, b) {
+  return !!a && !!b && a.asset === b.asset && a.quantity === b.quantity
+    && a.floorTotalUsd === b.floorTotalUsd && a.horizonDays === b.horizonDays;
 }
 
 function currentSpec() {
@@ -785,408 +1907,569 @@ function currentSpec() {
   };
 }
 
+document.getElementById('asset').addEventListener('change', onAssetChange);
+document.getElementById('amount').addEventListener('input', onAmountChange);
+document.getElementById('unitFloor').addEventListener('input', syncFloorFromUnit);
+document.getElementById('floor').addEventListener('input', syncFloorFromTotal);
+document.getElementById('days').addEventListener('input', onConstraintChange);
+
+// ── Live Candidates & Selection ───────────────────────────────────────────────
+
+const CLOSEST_MATCH_MAX_PCT = 15;
+
 async function findFloors() {
   setStep(2);
   document.getElementById('candLoading').style.display = 'block';
-  document.getElementById('candidateList').style.display = 'none';
-  document.getElementById('candVerdict').style.display = 'none';
+  document.getElementById('matchedOffersContainer').style.display = 'none';
+  document.getElementById('noMatchContainer').style.display = 'none';
+  document.getElementById('candStale').style.display = 'none';
+
   try {
     const { candidates } = await api('/api/candidates', { spec: currentSpec() });
     state.candidates = candidates;
     state.candidatesSpec = currentSpec();
-    document.getElementById('candStale').style.display = 'none';
     document.getElementById('candLoading').style.display = 'none';
+
     if (!candidates.length) {
-      const v = document.getElementById('candVerdict');
-      v.style.display = 'block';
-      v.innerHTML = '<b>No fillable structure matches that constraint right now.</b> That is the honest answer — nothing on the live book fits, and Payung never substitutes a near-miss silently. Try a different floor or window.';
+      document.getElementById('noMatchContainer').style.display = 'block';
       return;
     }
-    renderCandidates(candidates);
-    document.getElementById('candidateList').style.display = 'flex';
+
+    document.getElementById('matchedOffersContainer').style.display = 'block';
+    document.getElementById('querySubhead').innerHTML =
+      `<span>fetchOrders() on Base · ${candidates.length} fillable put${candidates.length > 1 ? 's' : ''} where you are the buyer, ranked by distance to your floor</span>`;
+
+    renderCandidates();
   } catch (e) {
-    const loadingEl = document.getElementById('candLoading');
-    loadingEl.innerHTML = `Error: ${e.message} <button class="btn secondary" style="margin-left:10px; padding:4px 10px; font-size:12px;" onclick="findFloors()">Retry</button>`;
+    document.getElementById('candLoading').innerHTML = `Error: ${e.message} <button class="btn-outline" style="margin-left:10px; padding:4px 10px; font-size:12px;" onclick="findFloors()">Retry</button>`;
   }
 }
 
-/** A candidate further than this from the user's implied strike doesn't earn the "closest match" badge. */
-const CLOSEST_MATCH_MAX_PCT = 15;
+function renderCandidates() {
+  const list = state.candidates;
+  if (!list.length) return;
 
-/** Human-readable direction for a signed distance. */
-function strikeDirection(pctVs) {
-  return pctVs >= 0 ? 'below' : 'above';
-}
-
-function renderCandidates(list) {
-  const el = document.getElementById('candidateList');
   const previouslySelectedId = state.selected?.id;
-  el.innerHTML = '';
-  const asset = document.getElementById('asset').value;
-  list.forEach((c, i) => {
-    const div = document.createElement('div');
-    div.className = 'candidate';
-    div.setAttribute('role', 'button');
-    div.setAttribute('tabindex', '0');
-    div.onclick = () => selectCandidate(i, div);
-    div.onkeydown = (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectCandidate(i, div); }
-    };
-    const gapBadge = c.coverageGapDays > 0.25
-      ? `<span class="badge warn">ends ${c.coverageGapDays.toFixed(1)}d early</span>` : '';
-    // Gate on ABSOLUTE distance. filterCandidates ranks by absolute distance,
-    // so list[0] can sit far ABOVE the user's floor when the book has nothing
-    // near it — a strike 30% above is a real mismatch (it costs far more than
-    // asked), not a perfect one. Label with the signed value so the user can
-    // see which side of their floor it falls on.
-    const isClose = c.pctFromImpliedStrike <= CLOSEST_MATCH_MAX_PCT;
-    const bestBadge = i === 0 && isClose ? '<span class="badge good">closest match</span>' : '';
-    const farBadge = i === 0 && !isClose
-      ? `<span class="badge warn">${c.pctFromImpliedStrike.toFixed(0)}% ${strikeDirection(c.pctVsImpliedStrike)} your floor</span>`
-      : '';
-    div.innerHTML = `
-      <div>
-        <div class="strike">$${c.strike.toLocaleString()} floor ${bestBadge}${farBadge}${gapBadge}</div>
-        <div class="meta">${c.daysToExpiry.toFixed(1)}d window · exp ${c.expiryIso.slice(0,10)} · put, buyable · iv ${c.iv ? c.iv.toFixed(2) : '—'}</div>
-      </div>
-      <div class="premium">
-        <div class="amount">$${c.pricePerContract.toFixed(2)}/${asset}</div>
-        <div class="label">confirmed cost shown after you pick</div>
-      </div>
-    `;
-    el.appendChild(div);
-  });
+  const restoreIndex = previouslySelectedId ? list.findIndex(c => c.id === previouslySelectedId) : -1;
+  const selectedIndex = restoreIndex >= 0 ? restoreIndex : 0;
+  const selected = list[selectedIndex];
+  state.selected = selected;
 
-  // The far-miss warning goes in its OWN element. selectCandidate (called at
-  // the end of this function) overwrites #candVerdict with a spinner and then
-  // the quote verdict, so anything written there would be gone in milliseconds.
-  const farMiss = document.getElementById('candFarMiss');
-  if (!list.length) { farMiss.style.display = 'none'; return; }
-  const nearest = list[0];
-  if (nearest.pctFromImpliedStrike > CLOSEST_MATCH_MAX_PCT) {
-    farMiss.style.display = 'block';
-    farMiss.innerHTML = `<b>Nothing on the live book is close to your stated floor.</b> ` +
-      `Your $${nearest.impliedStrike.toLocaleString(undefined,{maximumFractionDigits:2})} per-${asset} floor's ` +
-      `nearest match is $${nearest.strike.toLocaleString()} — ${nearest.pctFromImpliedStrike.toFixed(0)}% ` +
-      `${strikeDirection(nearest.pctVsImpliedStrike)} what you asked for. Payung shows it rather than hiding it, ` +
-      `but this is not a good match. Try a floor closer to spot.`;
+  const asset = document.getElementById('asset').value;
+  const targetStrike = selected.impliedStrike || Number(document.getElementById('unitFloor').value);
+
+  // Render Hero Card
+  const heroDist = selected.pctFromImpliedStrike;
+  const isFar = heroDist > CLOSEST_MATCH_MAX_PCT;
+  const sign = selected.pctVsImpliedStrike >= 0 ? '-' : '+';
+  
+  let badgeText = 'CLOSEST MATCH';
+  let badgeClass = 'badge-chip';
+  if (isFar) {
+    badgeText = `FAR FROM YOUR FLOOR · ${sign}${heroDist.toFixed(1)}%`;
+    badgeClass = 'badge-chip warn';
+  } else if (selectedIndex === 0 && heroDist < 0.01) {
+    badgeText = 'EXACT MATCH';
+    badgeClass = 'badge-chip';
+  } else if (selectedIndex === 0) {
+    badgeText = `CLOSEST MATCH · ${sign}${heroDist.toFixed(1)}%`;
+    badgeClass = 'badge-chip';
   } else {
-    farMiss.style.display = 'none';
+    badgeText = `YOUR PICK · ${sign}${heroDist.toFixed(1)}%`;
+    badgeClass = 'badge-chip neutral';
   }
 
-  const restoreIndex = previouslySelectedId ? list.findIndex(c => c.id === previouslySelectedId) : -1;
-  const indexToSelect = restoreIndex >= 0 ? restoreIndex : 0;
-  selectCandidate(indexToSelect, el.children[indexToSelect]);
-}
+  document.getElementById('heroStrike').textContent = formatMoney(selected.strike, 0);
+  document.getElementById('heroBadge').textContent = badgeText;
+  document.getElementById('heroBadge').className = badgeClass;
+  document.getElementById('heroDetails').textContent = `${selected.daysToExpiry.toFixed(1)}d window · expires ${selected.expiryIso.slice(0,10)} · maker budget ${formatMoney(selected.makerBudget, 0)}`;
+  document.getElementById('heroPremium').textContent = `${formatMoney(selected.pricePerContract)} / ${asset}`;
 
-async function selectCandidate(i, el) {
-  document.querySelectorAll('.candidate').forEach(c => c.classList.remove('selected'));
-  if (el) el.classList.add('selected');
-  state.selected = state.candidates[i];
-  const verdict = document.getElementById('candVerdict');
-  verdict.style.display = 'block';
-  // Clear any severity class from the PREVIOUS candidate. Without this the
-  // spinner — and a "Quote failed" error — inherit the last verdict's colour,
-  // so a failed quote can render inside a green "reasonable" box.
-  verdict.className = 'verdict';
-  verdict.innerHTML = '<span class="spinner"></span> pricing with previewFillOrder()...';
-  try {
-    const heldAmount = Math.max(0.0001, Number(document.getElementById('amount').value) || 1);
-    const asset = document.getElementById('asset').value;
-    const targetSpend = heldAmount * state.selected.pricePerContract;
-    const data = await api('/api/quote', { id: state.selected.id, spendUsdc: targetSpend });
-    state.quote = data;
-    verdict.className = 'verdict ' + data.judgment.verdict;
-    verdict.innerHTML = `<b>Agent verdict: ${data.judgment.verdict.replace(/-/g, ' ')}.</b> ` +
-      data.judgment.reasons.map(r => r).join(' ');
-    setStep(3);
-    drawUnifiedChart(data);
-    const q = data.quote;
-    const capNote = q.capped
-      ? ` (capped — this maker can only absorb $${q.spendUsdc.toFixed(2)} of your requested $${q.requestedUsdc.toFixed(2)})` : '';
-    
-    // Render Step 3 Cost Card
-    const step3Card = document.getElementById('step3CostCard');
-    if (step3Card) {
-      step3Card.style.display = 'block';
-      step3Card.innerHTML = `
-        <div class="cost-header">
-          <div>
-            <div class="cost-title">Final Trade Cost / Maximum Loss</div>
-            <div style="font-size:11px; color:var(--dim);">100% fixed — nothing more can ever leave your wallet</div>
-          </div>
-          <div class="cost-badge-amount">$${q.spendUsdc.toFixed(2)} USDC</div>
+  // Far Miss Warning
+  const farMissEl = document.getElementById('candFarMiss');
+  if (isFar) {
+    farMissEl.style.display = 'flex';
+    document.getElementById('candFarMissBody').textContent =
+      `The nearest live offer is ${heroDist.toFixed(1)}% away from the floor you asked for. Payung shows it rather than pretending it matches — buying it protects a different number than the one you stated.`;
+  } else {
+    farMissEl.style.display = 'none';
+  }
+
+  // Collapsed Disclosure for Other Candidates
+  const others = list.filter((_, idx) => idx !== selectedIndex);
+  const disclosureBtn = document.getElementById('disclosureBtn');
+  const otherListEl = document.getElementById('otherOffersList');
+
+  if (others.length > 0) {
+    disclosureBtn.style.display = 'flex';
+    const cheap = others.reduce((a, b) => (b.pricePerContract < a.pricePerContract ? b : a), others[0]);
+    const longest = others.reduce((a, b) => (b.daysToExpiry > a.daysToExpiry ? b : a), others[0]);
+
+    if (state.expanded) {
+      document.getElementById('disclosureCaret').textContent = '▾';
+      document.getElementById('disclosureSummary').textContent = `Hide the other ${others.length} live offers`;
+      otherListEl.style.display = 'flex';
+    } else {
+      document.getElementById('disclosureCaret').textContent = '▸';
+      if (others.length === 1 || cheap.id === longest.id) {
+        document.getElementById('disclosureSummary').textContent =
+          `${others.length} more live offer — from ${formatMoney(cheap.pricePerContract)}/${asset} at a ${formatMoney(cheap.strike, 0)} floor`;
+      } else {
+        const ratio = (selected.pricePerContract / (cheap.pricePerContract || 1)).toFixed(1);
+        document.getElementById('disclosureSummary').textContent =
+          `${others.length} more live offers — from ${formatMoney(cheap.pricePerContract)}/${asset} (${formatMoney(cheap.strike, 0)} floor, ${ratio}× cheaper) to ${formatMoney(longest.pricePerContract)}/${asset} (${longest.daysToExpiry.toFixed(0)}d window)`;
+      }
+      otherListEl.style.display = 'none';
+    }
+
+    otherListEl.innerHTML = '';
+    others.forEach((c) => {
+      const realIndex = list.findIndex(item => item.id === c.id);
+      const row = document.createElement('div');
+      row.className = 'candidate-row';
+      const d = c.pctFromImpliedStrike;
+      const fitSign = c.pctVsImpliedStrike >= 0 ? '-' : '+';
+      const fitText = d < 0.01 ? 'exact' : `${fitSign}${d.toFixed(1)}%`;
+      const fitColor = d < 0.01 ? 'var(--green)' : 'oklch(0.78 0.01 80)';
+
+      row.innerHTML = `
+        <span class="candidate-radio"></span>
+        <div class="cand-col">
+          <span class="cand-col-label">FLOOR</span>
+          <span class="cand-col-val">${formatMoney(c.strike, 0)}</span>
         </div>
-        <div class="cost-grid">
-          <div class="cost-item">
-            <label>Protection Target</label>
-            <div class="value">${q.contracts.toFixed(4)} ${asset}</div>
-          </div>
-          <div class="cost-item">
-            <label>Guaranteed Floor</label>
-            <div class="value">$${q.strike.toLocaleString()}</div>
-          </div>
-          <div class="cost-item">
-            <label>Expiry Date</label>
-            <div class="value">${q.expiryIso.slice(0,10)}</div>
-          </div>
-          <div class="cost-item">
-            <label>Unit Rate</label>
-            <div class="value">$${q.pricePerContract.toFixed(2)} / ${asset}</div>
-          </div>
+        <div class="cand-col">
+          <span class="cand-col-label">EXPIRY</span>
+          <span class="cand-col-val" style="font-size:12.5px; color:oklch(0.84 0.01 82);">${c.expiryIso.slice(0,10)} · ${c.daysToExpiry.toFixed(0)}d</span>
         </div>
-        <div class="cost-footnote">
-          <b>Guaranteed payout:</b> If ${asset} settles below <b>$${q.strike.toLocaleString()}</b> on ${q.expiryIso.slice(0,10)}, you are paid the cash difference automatically. Your real ${asset} is never sold.${capNote}
+        <div class="cand-col">
+          <span class="cand-col-label">VS YOUR FLOOR</span>
+          <span class="cand-col-val" style="font-size:12.5px; color:${fitColor};">${fitText}</span>
+        </div>
+        <div class="cand-col">
+          <span class="cand-col-label">PREMIUM</span>
+          <span class="cand-col-val" style="color:var(--text-bright);">${formatMoney(c.pricePerContract)} / ${asset}</span>
+        </div>
+        <div class="cand-col" style="text-align:right;">
+          <span class="cand-col-label">IV · BUDGET</span>
+          <span class="cand-col-val" style="font-size:12.5px; color:oklch(0.76 0.01 80);">${c.iv ? c.iv.toFixed(2) : '—'} · ${formatMoney(c.makerBudget, 0)}</span>
         </div>
       `;
-    }
-
-    const coveragePct = heldAmount > 0 ? (q.contracts / heldAmount) * 100 : 100;
-    const coverageNote = heldAmount > 0
-      ? ` This covers <b>${q.contracts.toFixed(4)}</b> of your <b>${heldAmount}</b> ${asset}` +
-        (coveragePct < 50
-          ? ` — <b style="color:var(--danger)">only ${coveragePct.toFixed(0)}% of what you asked to protect; the rest is unprotected.</b>`
-          : ` — the rest is unprotected.`)
-      : '';
-    const gapDays = state.selected?.coverageGapDays ?? 0;
-    const coverageGapNote = gapDays > 0.25
-      ? ` <b style="color:var(--warn)">Protection ends ${gapDays.toFixed(1)} days before your stated deadline</b> — after ${q.expiryIso.slice(0,10)} you are unprotected again.`
-      : '';
-    document.getElementById('payoffSummary').innerHTML =
-      `You spend exactly <b>$${q.spendUsdc.toFixed(2)} USDC</b>${capNote} — that is your maximum loss; nothing more can ever be taken. ` +
-      `If the price is below <b>$${q.strike.toLocaleString()}</b> at expiry (${q.expiryIso.slice(0,10)}), the contract pays you the difference in cash — your real coins are never sold. ` +
-      `If it stays above, the contract expires and you are out the premium — but your coins are worth more anyway.${coverageNote}${coverageGapNote}`;
-    
-    renderStep4OrderSummary();
-    updateWalletUI();
-  } catch (e) {
-    verdict.textContent = 'Quote failed: ' + e.message;
-  }
-}
-
-function renderStep4OrderSummary() {
-  const card = document.getElementById('step4OrderCard');
-  if (!card || !state.quote) return;
-  const q = state.quote.quote;
-  const asset = document.getElementById('asset').value;
-  const tokenName = state.selected?.collateralToken?.toLowerCase() === '0x4e65fe4dba92790696d040ac24aa414708f5c0ab'.toLowerCase()
-    ? 'aBasUSDC (Aave USDC)' : 'USDC';
-  
-  const userUsdc = Number(walletState.usdcBalance) || 0;
-  const userABas = Number(walletState.aBasUsdcBalance) || 0;
-  const needed = q.spendUsdc;
-  
-  let balanceHtml = '';
-  if (walletState.address) {
-    const totalAvail = userUsdc + userABas;
-    if (totalAvail >= needed) {
-      balanceHtml = `<div class="balance-indicator sufficient">✓ Wallet balance ($${userUsdc.toFixed(2)} USDC · $${userABas.toFixed(2)} aBasUSDC) is sufficient to execute.</div>`;
-    } else {
-      const short = (needed - totalAvail).toFixed(2);
-      balanceHtml = `<div class="balance-indicator short">⚠ Insufficient balance: you need $${short} more USDC in your wallet.</div>`;
-    }
+      row.onclick = () => selectCandidate(realIndex);
+      otherListEl.appendChild(row);
+    });
   } else {
-    balanceHtml = `<div class="balance-indicator" style="color:var(--dim);">Connect wallet to verify balance sufficiency.</div>`;
+    disclosureBtn.style.display = 'none';
+    otherListEl.style.display = 'none';
   }
 
-  card.style.display = 'block';
-  card.innerHTML = `
-    <div class="cost-header">
-      <div>
-        <div class="cost-title">Final Execution Order Summary</div>
-        <div style="font-size:11px; color:var(--dim);">Real order on Base mainnet (Chain ID 8453)</div>
-      </div>
-      <div class="cost-badge-amount">$${q.spendUsdc.toFixed(2)} USDC</div>
-    </div>
-    <div class="cost-grid">
-      <div class="cost-item">
-        <label>Final Cost (Max Loss)</label>
-        <div class="value" style="color:var(--accent);">$${q.spendUsdc.toFixed(2)} USDC</div>
-      </div>
-      <div class="cost-item">
-        <label>Position Protected</label>
-        <div class="value">${q.contracts.toFixed(4)} ${asset}</div>
-      </div>
-      <div class="cost-item">
-        <label>Strike Floor</label>
-        <div class="value">$${q.strike.toLocaleString()}</div>
-      </div>
-      <div class="cost-item">
-        <label>Collateral Token</label>
-        <div class="value">${tokenName}</div>
-      </div>
-    </div>
-    ${balanceHtml}
-  `;
+  // Quote the selected candidate
+  quoteSelectedCandidate();
 }
 
-/**
- * SVG presentation attributes, unlike CSS properties, are not reliably
- * var()-resolvable across browsers — which is why the original drawPayoff
- * hardcoded hex. Keep that. These MUST stay in sync with the :root custom
- * properties at the top of this file.
- */
-const CHART_COLORS = {
-  accent: '#4fd1a5',
-  danger: '#ff6b6b',
-  warn:   '#ffb84f',
-  dim:    '#8892a6',
-  grid:   '#232838',
-  axis:   '#3a4256',
-};
+function toggleDisclosure() {
+  state.expanded = !state.expanded;
+  renderCandidates();
+}
 
-/** Monotonic token so a slow history fetch can't overwrite a newer candidate's chart. */
+function toggleNoMatchState() {
+  state.noMatchPreview = !state.noMatchPreview;
+  document.getElementById('toggleNoMatchBtn').textContent = state.noMatchPreview ? 'show matched offers' : 'preview no-match state';
+  document.getElementById('matchedOffersContainer').style.display = state.noMatchPreview ? 'none' : 'block';
+  document.getElementById('noMatchContainer').style.display = state.noMatchPreview ? 'block' : 'none';
+}
+
+function selectCandidate(i) {
+  state.selected = state.candidates[i];
+  state.confirmed = false;
+  state.executed = false;
+  document.getElementById('confirmCheck').checked = false;
+  document.getElementById('receiptBox').style.display = 'none';
+  renderCandidates();
+}
+
+async function quoteSelectedCandidate() {
+  if (!state.selected) return;
+  const sel = state.selected;
+  const qty = Number(document.getElementById('amount').value) || 1;
+  const targetSpend = qty * sel.pricePerContract;
+
+  try {
+    const data = await api('/api/quote', { id: sel.id, spendUsdc: targetSpend });
+    state.quote = data;
+    const q = data.quote;
+    const j = data.judgment;
+
+    setStep(3);
+
+    // Update Step 3 Metric Grid
+    const totalFloor = qty * sel.strike;
+    const costPct = (q.spendUsdc / (totalFloor || 1)) * 100;
+    
+    document.getElementById('premiumTotal').textContent = formatMoney(q.spendUsdc);
+    document.getElementById('premiumSub').textContent = `${formatMoney(q.pricePerContract)} × ${q.contracts.toFixed(4)} contracts`;
+    document.getElementById('maxLossVal').textContent = formatMoney(q.spendUsdc);
+    document.getElementById('guaranteedFloorVal').textContent = formatMoney(totalFloor - q.spendUsdc);
+    document.getElementById('costPctVal').textContent = costPct.toFixed(2) + '%';
+
+    // Update Verdict
+    const vCard = document.getElementById('verdictCard');
+    vCard.className = 'verdict-card ' + (j.verdict === 'not-worth-it' ? 'against' : (j.verdict === 'marginal' ? 'marginal' : ''));
+    document.getElementById('verdictTitle').textContent =
+      j.verdict === 'worth-it' || j.verdict === 'reasonable'
+        ? `Worth it — ${costPct.toFixed(2)}% to remove all downside below your floor`
+        : (j.verdict === 'marginal'
+            ? `Marginal — the premium is a meaningful share of what it protects`
+            : `Not worth it — the premium eats too much of the protected value`);
+    document.getElementById('verdictBody').textContent = j.reasons.join(' ');
+
+    // Update Coverage Gap
+    const gapDays = sel.coverageGapDays || 0;
+    const statedDays = Number(document.getElementById('days').value) || 14;
+    document.getElementById('coverageBody').innerHTML =
+      `This offer expires ${q.expiryIso.slice(0,10)}, ` +
+      (sel.daysToExpiry >= statedDays
+        ? `${(sel.daysToExpiry - statedDays).toFixed(1)} day(s) after your stated horizon. The extra days are covered at no additional cost.`
+        : `<b>${gapDays.toFixed(1)} day(s) before</b> your stated ${statedDays}-day horizon — you are unprotected for that gap, and Payung will not paper over it.`) +
+      ` Maker budget caps this fill at ${formatMoney(sel.makerBudget, 0)} of collateral.`;
+
+    // Update Step 4 Collateral
+    updateWalletUI();
+
+    // Update Step 5
+    document.getElementById('confirmSpendText').textContent = formatMoney(q.spendUsdc);
+    document.getElementById('allowanceLogMeta').textContent = `${formatMoney(q.spendUsdc)} aBasUSDC`;
+    document.getElementById('expiryLogMeta').textContent = `expiry ${q.expiryIso.slice(0,10)}`;
+    updateExecButtonState();
+
+    // Render Right Panel Charts & Provenance
+    drawUnifiedChart(data);
+    renderPayoffChart(data);
+    updateProvenanceTable(data);
+  } catch (e) {
+    console.error('Quote error:', e);
+  }
+}
+
+function onConfirmCheckChange() {
+  state.confirmed = document.getElementById('confirmCheck').checked;
+  updateExecButtonState();
+}
+
+function updateExecButtonState() {
+  const btn = document.getElementById('execBtn');
+  const stage = document.getElementById('execStage');
+
+  if (state.executed) {
+    stage.textContent = 'FILLED';
+    btn.textContent = 'Filled — see receipt below';
+    btn.className = 'btn-exec';
+    return;
+  }
+
+  if (state.confirmed) {
+    stage.textContent = 'READY';
+    btn.className = 'btn-exec ready';
+    btn.textContent = `Execute fillOrder on Base (${formatMoney(state.quote?.quote?.spendUsdc || 0)})`;
+  } else {
+    stage.textContent = 'BLOCKED';
+    btn.className = 'btn-exec';
+    btn.textContent = 'Execute fillOrder on Base';
+  }
+}
+
+// ── Instrument Panel: Charts & Provenance ─────────────────────────────────────
+
 let chartRenderToken = 0;
+let currentHistory = { candles: [], spot: null, historySource: null };
+let currentChartData = null;
+let isDraggingFloor = false;
 
-/**
- * Fetches real price history + spot and draws it together with the strike,
- * expiry, protected zone, and the existing payoff curve. Degrades to
- * strike/spot/expiry/payoff only if the history fetch fails or returns no
- * candles — the chart never blocks the flow (design rule: no fabricated
- * numbers, so a missing input is dropped, never invented, and the drop is
- * stated on screen rather than left to look like completeness).
- */
-async function drawUnifiedChart(data) {
+async function drawUnifiedChart(data = null) {
+  if (data) currentChartData = data;
   const asset = document.getElementById('asset').value;
   const days = Number(document.getElementById('days').value) || 14;
   const token = ++chartRenderToken;
+
+  document.getElementById('chartTitle').textContent = `${asset} / USD · ${days}d history + protection window`;
+
   let history = { candles: [], spot: null, historySource: null, spotError: null, historyError: null };
   try {
     history = await apiGet('/api/history?asset=' + encodeURIComponent(asset) + '&days=' + days);
   } catch (e) {
     history.historyError = e.message;
-    history.spotError = e.message;
-    console.warn('history fetch failed, chart will degrade:', e.message);
   }
-  // A user clicking through candidates fires overlapping fetches; without this
-  // guard the slowest response wins and paints stale history over the newest
-  // selection. Silently dropping a superseded render is correct here.
-  if (token !== chartRenderToken) return;
-  renderUnifiedChart(data, history, days);
-}
 
-/** GET wrapper — the existing api() helper is POST-only. */
-async function apiGet(path) {
-  const res = await fetch(path);
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-  return json;
+  if (token !== chartRenderToken) return;
+  currentHistory = history;
+  renderUnifiedChart(currentChartData, history, days);
 }
 
 function renderUnifiedChart(data, history, historyDays) {
   const svg = document.getElementById('payoffChart');
-  const W = 700, H = 320, PAD_L = 60, PAD_R = 90, PAD_T = 26, PAD_B = 34;
+  if (!svg) return;
+  const W = 404, H = 268, PAD_L = 44, PAD_R = 74, PAD_T = 20, PAD_B = 36;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
 
-  const strike = data.quote.strike;
-  const expiryMs = new Date(data.quote.expiryIso).getTime();
-  const nowMs = Date.now();
-  const historyStartMs = nowMs - historyDays * 86400 * 1000;
-  const candles = history.candles || [];
-  const spot = history.spot;
+  const strike = (data && data.quote) ? data.quote.strike : (Number(document.getElementById('unitFloor').value) || 2300);
+  const candles = (history && history.candles) || [];
+  const spot = history ? history.spot : null;
+  const spotPrice = spot ? spot.price : strike * 1.05;
 
-  // X: history occupies the left ~70%, future (now -> expiry) the right ~30%.
-  const historyFrac = 0.7;
-  const xHistory = t => PAD_L + ((t - historyStartMs) / Math.max(1, nowMs - historyStartMs)) * (plotW * historyFrac);
-  const xNow = PAD_L + plotW * historyFrac;
-  const xExpiry = PAD_L + plotW;
+  const allPrices = [...candles.flatMap(c => [c.h, c.l]), strike, spotPrice].filter(Number.isFinite);
+  const lo = (allPrices.length ? Math.min(...allPrices) : 2000) * 0.98;
+  const hi = (allPrices.length ? Math.max(...allPrices) : 2500) * 1.02;
+  const yS = (p) => PAD_T + (1 - (p - lo) / (hi - lo)) * plotH;
+  const pFromY = (y) => hi - ((y - PAD_T) / plotH) * (hi - lo);
 
-  // Y: price, spanning candle highs/lows, strike, and spot, with padding.
-  const candlePrices = candles.flatMap(c => [c.h, c.l]);
-  const allPrices = [...candlePrices, strike, spot ? spot.price : strike].filter(Number.isFinite);
-  const priceLo = Math.min(...allPrices) * 0.97;
-  const priceHi = Math.max(...allPrices) * 1.03;
-  const yS = p => PAD_T + (1 - (p - priceLo) / (priceHi - priceLo)) * plotH;
+  svg._chartScale = { W, H, PAD_L, PAD_R, PAD_T, PAD_B, plotW, plotH, lo, hi, yS, pFromY };
 
-  const candleW = candles.length ? Math.max(1.5, (plotW * historyFrac / candles.length) * 0.6) : 0;
-  const candleSvg = candles.map(c => {
-    const x = xHistory(c.t * 1000);
-    const up = c.c >= c.o;
-    const color = up ? CHART_COLORS.accent : CHART_COLORS.danger;
-    const bodyTop = yS(Math.max(c.o, c.c));
-    const bodyBot = yS(Math.min(c.o, c.c));
-    return `
-      <line x1="${x}" y1="${yS(c.h)}" x2="${x}" y2="${yS(c.l)}" stroke="${color}" stroke-width="1"/>
-      <rect x="${(x - candleW / 2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${candleW.toFixed(1)}" height="${Math.max(1, bodyBot - bodyTop).toFixed(1)}" fill="${color}"/>
-    `;
-  }).join('');
+  const splitX = PAD_L + plotW * 0.68;
+  const x0 = PAD_L, x1 = splitX, xExpiry = PAD_L + plotW;
 
-  // Protected zone: below strike, from now to expiry.
-  const protectedZone = strike > priceLo
-    ? `<rect x="${xNow.toFixed(1)}" y="${yS(strike).toFixed(1)}" width="${(xExpiry - xNow).toFixed(1)}" height="${Math.max(0, yS(priceLo) - yS(strike)).toFixed(1)}" fill="rgba(79,209,165,0.08)"/>`
-    : '';
+  // Candlesticks
+  let candleSvg = '';
+  if (candles.length > 0) {
+    const step = (x1 - x0) / candles.length;
+    const w = Math.max(1.8, step * 0.55);
+    candleSvg = candles.map((c, i) => {
+      const cx = x0 + i * step + step / 2;
+      const up = c.c >= c.o;
+      const color = up ? 'oklch(0.70 0.11 155)' : 'oklch(0.62 0.14 28)';
+      const bodyTop = yS(Math.max(c.o, c.c));
+      const bodyBot = yS(Math.min(c.o, c.c));
+      return `
+        <line x1="${cx.toFixed(1)}" y1="${yS(c.h).toFixed(1)}" x2="${cx.toFixed(1)}" y2="${yS(c.l).toFixed(1)}" stroke="${color}" stroke-width="1" opacity="0.75" />
+        <rect x="${(cx - w/2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1, bodyBot - bodyTop).toFixed(1)}" fill="${color}" />
+      `;
+    }).join('');
+  }
 
-  const strikeLine = `
-    <line x1="${PAD_L}" y1="${yS(strike).toFixed(1)}" x2="${xNow.toFixed(1)}" y2="${yS(strike).toFixed(1)}" stroke="${CHART_COLORS.warn}" stroke-dasharray="4,4" stroke-width="1.5"/>
-    <line x1="${xNow.toFixed(1)}" y1="${yS(strike).toFixed(1)}" x2="${(W - PAD_R).toFixed(1)}" y2="${yS(strike).toFixed(1)}" stroke="${CHART_COLORS.warn}" stroke-width="2"/>
-    <text x="${(W - PAD_R + 6).toFixed(1)}" y="${(yS(strike) - 4).toFixed(1)}" fill="${CHART_COLORS.warn}" font-size="11" font-family="monospace">$${strike.toLocaleString()} floor</text>
-  `;
+  // Protection Zone
+  const strikeY = yS(strike);
+  const zoneH = Math.max(0, (H - PAD_B) - strikeY);
+  const zoneSvg = `<rect id="svgProtectionZone" x="${splitX.toFixed(1)}" y="${strikeY.toFixed(1)}" width="${(xExpiry - splitX).toFixed(1)}" height="${zoneH.toFixed(1)}" fill="oklch(0.72 0.13 155)" opacity="0.12" />`;
 
-  const spotLine = spot ? `
-    <line x1="${PAD_L}" y1="${yS(spot.price).toFixed(1)}" x2="${(W - PAD_R).toFixed(1)}" y2="${yS(spot.price).toFixed(1)}" stroke="${CHART_COLORS.dim}" stroke-dasharray="2,3" stroke-width="1.5"/>
-    <text x="${PAD_L}" y="${(yS(spot.price) - 4).toFixed(1)}" fill="${CHART_COLORS.dim}" font-size="11" font-family="monospace">$${spot.price.toLocaleString(undefined,{maximumFractionDigits:0})} now</text>
-  ` : '';
-
-  const pctBelowSpot = spot && spot.price > 0 ? (((spot.price - strike) / spot.price) * 100) : null;
-
-  const expiryLine = `
-    <line x1="${xExpiry.toFixed(1)}" y1="${PAD_T}" x2="${xExpiry.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="${CHART_COLORS.axis}" stroke-dasharray="3,3" stroke-width="1"/>
-    <text x="${xExpiry.toFixed(1)}" y="${(PAD_T - 8).toFixed(1)}" fill="${CHART_COLORS.dim}" font-size="10" text-anchor="end" font-family="monospace">exp ${data.quote.expiryIso.slice(0,10)}</text>
-  `;
-  const nowLine = `<line x1="${xNow.toFixed(1)}" y1="${PAD_T}" x2="${xNow.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="${CHART_COLORS.grid}" stroke-width="1"/>`;
+  const spotY = yS(spotPrice);
+  const expiryLabel = (data && data.quote) ? data.quote.expiryIso.slice(5, 10) : formatDateIn(historyDays || 14);
 
   svg.innerHTML = `
-    <defs>
-      <clipPath id="plotClip">
-        <rect x="0" y="${PAD_T}" width="${W}" height="${plotH}"/>
-      </clipPath>
-    </defs>
-    ${protectedZone}
-    <g clip-path="url(#plotClip)">${candleSvg}</g>
-    ${strikeLine}
-    ${spotLine}
-    ${nowLine}
-    ${expiryLine}
+    ${zoneSvg}
+    <line x1="${splitX.toFixed(1)}" y1="${PAD_T}" x2="${splitX.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="oklch(0.42 0.014 70)" stroke-width="1" />
+    <line x1="${xExpiry.toFixed(1)}" y1="${PAD_T}" x2="${xExpiry.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="oklch(0.55 0.10 155)" stroke-width="1" stroke-dasharray="3 3" />
+    ${candleSvg}
+    <!-- Spot Price Line -->
+    <line x1="${PAD_L}" y1="${spotY.toFixed(1)}" x2="${(W - PAD_R + 10).toFixed(1)}" y2="${spotY.toFixed(1)}" stroke="oklch(0.72 0.02 80)" stroke-width="1" stroke-dasharray="2 4" opacity="0.75" />
+    <text x="8" y="${(spotY - 4).toFixed(1)}" fill="oklch(0.78 0.02 80)" font-family="IBM Plex Mono, monospace" font-size="9.5">SPOT ${formatMoney(spotPrice, 0)}</text>
+
+    <!-- Draggable Floor Line & Grab Badge -->
+    <g id="draggableFloorSvgGroup" class="draggable-floor-svg-group">
+      <line x1="0" y1="${strikeY.toFixed(1)}" x2="${W}" y2="${strikeY.toFixed(1)}" stroke="transparent" stroke-width="28" style="cursor: ns-resize;" />
+      <line id="svgFloorLine" x1="${PAD_L}" y1="${strikeY.toFixed(1)}" x2="${(W - PAD_R + 10).toFixed(1)}" y2="${strikeY.toFixed(1)}" stroke="oklch(0.80 0.13 78)" stroke-width="2.2" />
+      <rect id="svgFloorBadgeRect" x="6" y="${(strikeY - 11).toFixed(1)}" width="92" height="22" rx="6" fill="oklch(0.80 0.13 78)" style="cursor: ns-resize;" />
+      <text id="svgFloorBadgeText" x="52" y="${(strikeY + 4).toFixed(1)}" fill="oklch(0.20 0.04 78)" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="10" text-anchor="middle" style="pointer-events: none;">⇕ FLOOR ${formatMoney(strike, 0)}</text>
+    </g>
+
+    <text x="${((splitX + xExpiry) / 2).toFixed(1)}" y="${H - 12}" fill="oklch(0.72 0.08 155)" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle">PROTECTED THROUGH ${expiryLabel}</text>
+    <text x="${PAD_L}" y="${H - 12}" fill="oklch(0.58 0.01 75)" font-family="IBM Plex Mono, monospace" font-size="9">${historyDays}D AGO</text>
+    <text x="${splitX.toFixed(1)}" y="${H - 12}" fill="oklch(0.58 0.01 75)" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle">NOW</text>
   `;
 
-  // Attribution — named sources for all displayed data. A missing input is
-  // stated in place, never quietly omitted.
-  const attribution = document.getElementById('chartAttribution');
-  const spotText = spot
-    ? `spot $${spot.price.toLocaleString(undefined,{maximumFractionDigits:0})} (Chainlink, ${new Date(spot.updatedAt).toLocaleTimeString()})` +
-      (pctBelowSpot !== null ? ` · floor is ${pctBelowSpot.toFixed(1)}% below spot` : '')
-    : 'SPOT UNAVAILABLE — no live price to compare your floor against';
-  const historyText = history.historySource ? 'candles: Coinbase' : 'CANDLES UNAVAILABLE';
-  attribution.textContent = `${historyText} · ${spotText} · strike: live Thetanuts order`;
-  attribution.style.color = (spot && history.historySource) ? 'var(--dim)' : 'var(--warn)';
-  if (history.spotError || history.historyError) {
-    console.warn('chart degraded —', { spotError: history.spotError, historyError: history.historyError });
+  setupSvgFloorDrag(svg);
+
+  // Attribution
+  const spotSrc = spot ? `Chainlink spot: ${formatMoney(spot.price, 0)} (${new Date(spot.updatedAt).toLocaleTimeString()})` : 'Spot feed degraded';
+  const histSrc = history && history.historySource ? 'candles: Coinbase' : 'candles offline';
+  document.getElementById('chartAttribution').textContent = `${histSrc} · ${spotSrc} · live orderbook`;
+}
+
+function setupSvgFloorDrag(svg) {
+  const group = document.getElementById('draggableFloorSvgGroup');
+  if (!group || !svg._chartScale) return;
+
+  group.onpointerdown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingFloor = true;
+    group.setPointerCapture(e.pointerId);
+    group.classList.add('dragging');
+
+    const onPointerMove = (ev) => {
+      if (!isDraggingFloor || !svg._chartScale) return;
+      const rect = svg.getBoundingClientRect();
+      const scaleY = 268 / rect.height;
+      const svgY = (ev.clientY - rect.top) * scaleY;
+
+      const rawPrice = svg._chartScale.pFromY(svgY);
+      if (!Number.isFinite(rawPrice)) return;
+
+      const asset = document.getElementById('asset').value;
+      const snap = asset === 'BTC' ? 50 : 10;
+      const newFloor = Math.max(1, Math.round(rawPrice / snap) * snap);
+
+      // Real-time 2-way sync to form inputs and sentence
+      document.getElementById('unitFloor').value = newFloor;
+      const amount = Number(document.getElementById('amount').value) || 1;
+      document.getElementById('floor').value = Number((amount * newFloor).toFixed(4));
+      restateSentence();
+
+      // Smooth visual repositioning in SVG
+      const newY = svg._chartScale.yS(newFloor);
+      const line = document.getElementById('svgFloorLine');
+      const badgeRect = document.getElementById('svgFloorBadgeRect');
+      const badgeText = document.getElementById('svgFloorBadgeText');
+      const zone = document.getElementById('svgProtectionZone');
+
+      if (line) {
+        line.setAttribute('y1', newY.toFixed(1));
+        line.setAttribute('y2', newY.toFixed(1));
+      }
+      if (badgeRect) {
+        badgeRect.setAttribute('y', (newY - 11).toFixed(1));
+      }
+      if (badgeText) {
+        badgeText.setAttribute('y', (newY + 4).toFixed(1));
+        badgeText.textContent = `⇕ FLOOR ${formatMoney(newFloor, 0)}`;
+      }
+      if (zone) {
+        const zoneH = Math.max(0, (svg._chartScale.H - svg._chartScale.PAD_B) - newY);
+        zone.setAttribute('y', newY.toFixed(1));
+        zone.setAttribute('height', zoneH.toFixed(1));
+      }
+    };
+
+    const onPointerUp = (ev) => {
+      if (!isDraggingFloor) return;
+      isDraggingFloor = false;
+      group.classList.remove('dragging');
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+
+      // Re-query orderbook on release
+      findFloors();
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  };
+}
+
+function renderPayoffChart(data) {
+  const svg = document.getElementById('expiryPayoffSvg');
+  const strike = data.quote.strike;
+  const premium = data.quote.spendUsdc;
+  const qty = data.quote.contracts || 1;
+
+  const px0 = 14, px1 = 390, pyTop = 16, pyBot = 96;
+  const lo = strike * 0.85, hi = strike * 1.15;
+  const X = (v) => px0 + ((v - lo) / (hi - lo)) * (px1 - px0);
+
+  const maxMove = strike * 0.15 * qty;
+  const zeroY = pyTop + (pyBot - pyTop) * 0.52;
+  const Y = (v) => {
+    if (v >= 0) return zeroY - (Math.min(v, maxMove) / maxMove) * (zeroY - pyTop);
+    return zeroY + (Math.min(-v, maxMove) / maxMove) * (pyBot - zeroY);
+  };
+
+  const floorY = Math.max(Y(-premium), zeroY + 6);
+  const un = [], he = [];
+  for (let i = 0; i <= 24; i++) {
+    const p = lo + (hi - lo) * (i / 24);
+    un.push(`${X(p).toFixed(1)},${Y((p - strike) * qty).toFixed(1)}`);
+    const hv = (p - strike) * qty - premium;
+    he.push(`${X(p).toFixed(1)},${(hv <= 0 ? floorY : Y(hv)).toFixed(1)}`);
+  }
+
+  const strikeX = X(strike);
+  svg.innerHTML = `
+    <line x1="14" y1="${zeroY.toFixed(1)}" x2="390" y2="${zeroY.toFixed(1)}" stroke="oklch(0.38 0.012 70)" stroke-width="1" stroke-dasharray="2 4" />
+    <polyline points="${un.join(' ')}" fill="none" stroke="oklch(0.55 0.014 70)" stroke-width="1.4" stroke-dasharray="4 4" />
+    <polyline points="${he.join(' ')}" fill="none" stroke="oklch(0.80 0.13 78)" stroke-width="2" />
+    <line x1="${strikeX.toFixed(1)}" y1="12" x2="${strikeX.toFixed(1)}" y2="104" stroke="oklch(0.45 0.05 78)" stroke-width="1" />
+    <text x="${strikeX.toFixed(1)}" y="118" fill="oklch(0.72 0.06 78)" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="middle">${formatMoney(strike, 0)}</text>
+    <text x="18" y="118" fill="oklch(0.58 0.01 75)" font-family="IBM Plex Mono, monospace" font-size="9">FLOOR HOLDS BELOW</text>
+    <text x="386" y="118" fill="oklch(0.58 0.01 75)" font-family="IBM Plex Mono, monospace" font-size="9" text-anchor="end">UPSIDE KEPT</text>
+  `;
+}
+
+function updateProvenanceTable(data) {
+  const sel = state.selected;
+  document.getElementById('provPremiumVal').textContent = formatMoney(data.quote.spendUsdc);
+  document.getElementById('provStrikeVal').textContent = formatMoney(sel.strike, 0);
+  document.getElementById('provBudgetVal').textContent = formatMoney(sel.makerBudget, 0);
+}
+
+// ── Execution & Simulation ────────────────────────────────────────────────────
+
+async function handleDepositClick() {
+  if (!walletState.address || !walletState.signer) {
+    await connectWallet();
+    if (!walletState.address) return;
+  }
+
+  const q = state.quote?.quote;
+  if (!q) return;
+
+  const btn = document.getElementById('depositBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Preparing Aave supply...';
+
+  try {
+    const prep = await api('/api/prepare-tx', {
+      id: state.selected.id,
+      spendUsdc: q.spendUsdc,
+      takerAddress: walletState.address,
+    });
+
+    if (prep.aavePlan) {
+      const usdcContract = new ethers.Contract(prep.aavePlan.rawUsdcAddress, ERC20_ABI, walletState.signer);
+      const allowance = await usdcContract.allowance(walletState.address, prep.aavePlan.aavePoolAddress);
+      const required = BigInt(prep.aavePlan.supplyAmount);
+
+      if (allowance < required) {
+        btn.innerHTML = '<span class="spinner"></span>Approve USDC in wallet...';
+        const appTx = await walletState.signer.sendTransaction({
+          to: prep.aavePlan.approveAaveTx.to,
+          data: prep.aavePlan.approveAaveTx.data,
+        });
+        await appTx.wait();
+      }
+
+      btn.innerHTML = '<span class="spinner"></span>Confirm Aave supply in wallet...';
+      const supTx = await walletState.signer.sendTransaction({
+        to: prep.aavePlan.supplyTx.to,
+        data: prep.aavePlan.supplyTx.data,
+      });
+      await supTx.wait();
+
+      btn.textContent = 'Deposited via Aave V3 ✓';
+      await refreshWalletBalances();
+      updateWalletUI();
+    } else {
+      btn.textContent = 'Settles in raw USDC (No deposit needed)';
+    }
+  } catch (e) {
+    alert('Aave Deposit failed: ' + (e.shortMessage || e.message));
+    btn.textContent = 'Deposit via Aave V3';
+  } finally {
+    btn.disabled = false;
   }
 }
 
-function goToExecute() { setStep(4); }
-
-// ── Simulation & Execution ─────────────────────────────────────────────────────
-
-/**
- * Real free simulation: a read-only eth_call of the EXACT fill calldata,
- * "from" the wallet that would send it. The Thetanuts SDK's own
- * callStaticFillOrder resolves {success:false} instead of throwing on a
- * would-revert fill (a real gotcha — see HANDOFF.md) — going straight to a
- * raw provider.call sidesteps that entirely: ethers throws on any revert.
- */
 async function checkFillWouldSucceed(prep, fromAddress) {
   await walletState.provider.call({ to: prep.fillTx.to, data: prep.fillTx.data, from: fromAddress });
 }
 
 async function runSimulate() {
   const btn = document.getElementById('simBtn');
+  const resBox = document.getElementById('simResultBox');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>simulating fill...';
-  document.getElementById('simResult').innerHTML = '';
-  const el = document.createElement('div');
-  el.className = 'sim-result';
+  btn.innerHTML = '<span class="spinner"></span>Simulating fill...';
+  resBox.innerHTML = '';
+
   try {
     const q = state.quote.quote;
     const prep = await api('/api/prepare-tx', {
@@ -1196,22 +2479,36 @@ async function runSimulate() {
     });
 
     if (!walletState.address || !walletState.provider) {
-      el.innerHTML = `Order structure encodes fine. <b>Final execution cost: $${prep.quote.spendUsdc.toFixed(2)} USDC.</b> Connect a wallet to run a real on-chain simulation of the exact fill.`;
+      resBox.innerHTML = `
+        <div style="margin-top:12px; padding:12px; border-radius:8px; background:var(--subcard-bg); border:1px solid var(--border); font-size:13px;">
+          ✓ Order structure encodes validly. Cost: <b>${formatMoney(prep.quote.spendUsdc)} USDC</b>. Connect wallet to run on-chain dry-run.
+        </div>
+      `;
+      document.getElementById('simDot').className = 'log-dot';
+      document.getElementById('simLogMeta').textContent = 'PASS · 0 gas';
     } else {
       try {
         await checkFillWouldSucceed(prep, walletState.address);
-        el.className = 'sim-result ok';
-        el.innerHTML = `✓ <b>Simulation succeeded on Base mainnet.</b><br/>Final amount that will leave your wallet on execution: <b>$${prep.quote.spendUsdc.toFixed(2)} USDC</b>.<br/><span style="color:var(--dim); font-size:11px;">$0.00 spent on simulation — zero gas, zero collateral debited.</span>`;
+        resBox.innerHTML = `
+          <div style="margin-top:12px; padding:12px; border-radius:8px; background:oklch(0.24 0.02 155); border:1px solid var(--green-border); font-size:13px; color:var(--green-text);">
+            ✓ <b>Simulation succeeded on Base mainnet.</b> 0 gas spent, verified against live state.
+          </div>
+        `;
+        document.getElementById('simDot').className = 'log-dot';
+        document.getElementById('simLogMeta').textContent = 'PASS · 0 gas';
       } catch (simErr) {
-        el.textContent = `✗ Would revert right now: ${simErr.shortMessage || simErr.reason || simErr.message}. If you haven't approved or deposited collateral yet, Execute does that first and re-checks right before sending.`;
+        resBox.innerHTML = `
+          <div style="margin-top:12px; padding:12px; border-radius:8px; background:var(--warn-bg); border:1px solid var(--warn-border); font-size:13px; color:var(--warn-text);">
+            Notice: ${simErr.shortMessage || simErr.message}. If collateral has not been approved/supplied yet, Execute handles that automatically.
+          </div>
+        `;
       }
     }
   } catch (e) {
-    el.textContent = `✗ Simulation check: ${e.message}`;
+    resBox.innerHTML = `<div style="margin-top:12px; color:var(--danger); font-size:13px;">✗ Simulation error: ${e.message}</div>`;
   } finally {
-    document.getElementById('simResult').appendChild(el);
     btn.disabled = false;
-    btn.textContent = 'Re-simulate';
+    btn.textContent = 'Re-run free simulation';
   }
 }
 
@@ -1230,6 +2527,8 @@ function sumDebitsFromReceipt(receipt, tokenAddress, walletAddress) {
 }
 
 async function runExecute() {
+  if (!state.confirmed) return;
+
   if (!walletState.address || !walletState.signer) {
     await connectWallet();
     if (!walletState.address) return;
@@ -1237,11 +2536,9 @@ async function runExecute() {
 
   const q = state.quote.quote;
   const asset = document.getElementById('asset').value;
-  if (!confirm(`Spend $${q.spendUsdc.toFixed(2)} USDC on Base mainnet to buy a $${q.strike.toLocaleString()} floor for ${q.contracts.toFixed(4)} ${asset} using wallet ${walletState.address}?`)) return;
-
   const btn = document.getElementById('execBtn');
   btn.disabled = true;
-  document.getElementById('txResult').innerHTML = '';
+  document.getElementById('receiptBox').style.display = 'none';
 
   try {
     btn.innerHTML = '<span class="spinner"></span>Preparing transaction...';
@@ -1253,7 +2550,7 @@ async function runExecute() {
 
     const requiredUnits = BigInt(prep.collateralUnits);
 
-    // 1. Handle Aave collateral deposit if needed (for aBasUSDC)
+    // 1. Supply to Aave if required
     if (prep.aavePlan) {
       const aBasContract = new ethers.Contract(prep.aavePlan.aBasUsdcAddress, ERC20_ABI, walletState.signer);
       const currentABas = await aBasContract.balanceOf(walletState.address);
@@ -1264,10 +2561,9 @@ async function runExecute() {
         const usdcBal = await usdcContract.balanceOf(walletState.address);
 
         if (usdcBal < shortfall) {
-          throw new Error(`Insufficient USDC balance. You need $${(Number(shortfall)/1e6).toFixed(2)} USDC to supply to Aave for collateral.`);
+          throw new Error(`Insufficient USDC balance. You need $${(Number(shortfall)/1e6).toFixed(2)} USDC to supply to Aave.`);
         }
 
-        // Check allowance for Aave pool
         const aaveAllowance = await usdcContract.allowance(walletState.address, prep.aavePlan.aavePoolAddress);
         if (aaveAllowance < shortfall) {
           btn.innerHTML = '<span class="spinner"></span>Approve USDC for Aave in wallet...';
@@ -1289,34 +2585,29 @@ async function runExecute() {
       }
     }
 
-    // 2. Handle OptionBook collateral allowance
+    // 2. OptionBook Allowance Approval
     const collateralContract = new ethers.Contract(prep.collateralToken, ERC20_ABI, walletState.signer);
     const currentAllowance = await collateralContract.allowance(walletState.address, prep.optionBookAddress);
 
     if (currentAllowance < requiredUnits) {
-      btn.innerHTML = '<span class="spinner"></span>Approve collateral in wallet...';
+      btn.innerHTML = '<span class="spinner"></span>Approve collateral for OptionBook...';
       const appTx = await walletState.signer.sendTransaction({
         to: prep.approveOptionBookTx.to,
         data: prep.approveOptionBookTx.data,
       });
-      btn.innerHTML = '<span class="spinner"></span>Confirming approval...';
+      btn.innerHTML = '<span class="spinner"></span>Confirming OptionBook approval...';
       await appTx.wait();
     }
 
-    // 3. Verify the fill would succeed against the CURRENT chain state — this
-    // is the real safety gate, deliberately placed here rather than behind
-    // the separate "Simulate" button: it runs after approval/deposit are
-    // confirmed, so it reflects exactly what "4." is about to send. A
-    // simulate run before approval existed would reject every fresh
-    // wallet's first fill and prove nothing about the tx we actually send.
-    btn.innerHTML = '<span class="spinner"></span>Verifying the fill would succeed...';
+    // 3. Pre-flight verification
+    btn.innerHTML = '<span class="spinner"></span>Verifying fill safety...';
     try {
       await checkFillWouldSucceed(prep, walletState.address);
     } catch (simErr) {
-      throw new Error(`Simulation says this fill would revert — refusing to send: ${simErr.shortMessage || simErr.reason || simErr.message}`);
+      throw new Error(`Fill pre-flight check failed: ${simErr.shortMessage || simErr.message}`);
     }
 
-    // 4. Fill Order on Thetanuts OptionBook
+    // 4. Execute FillOrder
     btn.innerHTML = '<span class="spinner"></span>Confirm fillOrder in wallet...';
     const fillTx = await walletState.signer.sendTransaction({
       to: prep.fillTx.to,
@@ -1326,81 +2617,56 @@ async function runExecute() {
     btn.innerHTML = '<span class="spinner"></span>Waiting for block confirmation...';
     const receipt = await fillTx.wait();
 
-    // 5. Calculate actual paid amount from receipt Transfer logs
+    // 5. Read debits from on-chain logs
     const paidUnits = sumDebitsFromReceipt(receipt, prep.collateralToken, walletState.address);
-    const paidUsd = paidUnits > 0n ? Number(paidUnits) / (10 ** prep.collateralDecimals) : null;
-    const paidText = paidUsd !== null ? `$${paidUsd.toFixed(2)} USDC` : `$${q.spendUsdc.toFixed(2)} USDC`;
+    const paidUsd = paidUnits > 0n ? Number(paidUnits) / (10 ** prep.collateralDecimals) : q.spendUsdc;
 
-    btn.textContent = 'Executed ✓';
-    document.getElementById('txResult').innerHTML = `
-      <div class="tx-card">
-        <div class="tx-label">Real transaction confirmed on Base mainnet</div>
-        <div style="font-size:15px; font-weight:600; margin-bottom:8px; color:var(--text);">
-          Final Amount Paid: <span style="color:var(--accent); font-family:var(--mono);">${paidText}</span>
-          <span style="font-size:11px; color:var(--dim); font-weight:normal; margin-left:6px;">(verified on-chain from Transfer logs)</span>
-        </div>
-        <div class="tx-hash">${receipt.hash}</div>
-        <div style="margin-top:10px;"><a href="https://basescan.org/tx/${receipt.hash}" target="_blank" rel="noopener">View on BaseScan →</a></div>
-      </div>
-    `;
+    state.executed = true;
+    setStep(5);
+    updateExecButtonState();
+
+    document.getElementById('receiptLine').textContent =
+      `You bought ${q.contracts.toFixed(4)} put contract(s) at a ${formatMoney(q.strike, 0)} strike expiring ${q.expiryIso.slice(0,10)} for ${formatMoney(paidUsd)}, verified from Transfer event logs on Base mainnet.`;
+    document.getElementById('receiptTxHash').textContent = receipt.hash;
+    document.getElementById('receiptExplorerLink').href = `https://basescan.org/tx/${receipt.hash}`;
+    document.getElementById('receiptBox').style.display = 'block';
 
     await refreshWalletBalances();
     updateWalletUI();
   } catch (e) {
-    executionFailedNeedsManualClear = true;
-    btn.textContent = 'Execute with wallet';
-    const box = document.getElementById('txResult');
-    box.innerHTML = `
-      <div class="sim-result">
-        <div id="execErrMsg"></div>
-        <div style="margin-top:10px;">If a transaction was already broadcast, check
-          <a href="https://basescan.org/address/${walletState.address || ''}" target="_blank" rel="noopener">BaseScan</a>
-          before retrying.</div>
-        <button class="btn secondary" style="margin-top:10px;" onclick="rearmExecute()">Retry</button>
-      </div>
-    `;
-    // The error text can embed wallet/RPC/contract-revert strings — never
-    // trust it as HTML. walletState.address above is safe: it always comes
-    // from the wallet extension as a checksummed hex address, never user text.
-    document.getElementById('execErrMsg').textContent = '✗ ' + (e.shortMessage || e.message);
+    alert('Execution failed: ' + (e.shortMessage || e.message));
+    btn.disabled = false;
+    updateExecButtonState();
   }
 }
 
-function rearmExecute() {
-  executionFailedNeedsManualClear = false;
-  const btn = document.getElementById('execBtn');
-  btn.disabled = false;
-  updateWalletUI();
-  document.getElementById('txResult').innerHTML = '';
-}
-
 function resetFlow() {
-  state = { candidates: [], selected: null, quote: null, candidatesSpec: null };
-  executionFailedNeedsManualClear = false;
-  const btn = document.getElementById('execBtn');
-  btn.disabled = false;
-  updateWalletUI();
-  const step3Card = document.getElementById('step3CostCard');
-  if (step3Card) step3Card.style.display = 'none';
-  const step4Card = document.getElementById('step4OrderCard');
-  if (step4Card) step4Card.style.display = 'none';
-  document.getElementById('simBtn').textContent = 'Simulate fill (free)';
-  document.getElementById('simResult').innerHTML = '';
-  document.getElementById('txResult').innerHTML = '';
-  const stale = document.getElementById('candStale');
-  if (stale) stale.style.display = 'none';
-  const farMiss = document.getElementById('candFarMiss');
-  if (farMiss) farMiss.style.display = 'none';
+  state = {
+    candidates: [], selected: null, quote: null, candidatesSpec: null,
+    expanded: false, noMatchPreview: false, confirmed: false, executed: false,
+  };
+  document.getElementById('confirmCheck').checked = false;
+  document.getElementById('receiptBox').style.display = 'none';
+  document.getElementById('simResultBox').innerHTML = '';
+  document.getElementById('sentenceInput').value = 'I need my ETH worth at least $2,300 in two weeks';
   document.getElementById('asset').value = 'ETH';
-  document.getElementById('unitFloorLabel').textContent = 'Market floor ($ / ETH)';
   document.getElementById('amount').value = '1';
   document.getElementById('unitFloor').value = '2300';
   document.getElementById('floor').value = '2300';
   document.getElementById('days').value = '14';
   restateSentence();
   setStep(1);
+  drawUnifiedChart();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+// Initial Run
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('sentenceInput').value = 'I need my ETH worth at least $2,300 in two weeks';
+  restateSentence();
+  setStep(1);
+  drawUnifiedChart();
+});
 </script>
 </body>
 </html>

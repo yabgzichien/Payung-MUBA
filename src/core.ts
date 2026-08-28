@@ -52,10 +52,12 @@ export type Candidate = {
   daysToExpiry: number;
   /** Premium per contract, in USDC. Decoded with the contract's real price decimals. */
   pricePerContract: number;
-  /** Collateral token for THIS order — the book quotes USDC, WETH and cbBTC. */
+  /** Collateral token for THIS order — the book quotes USDC, aBasUSDC, WETH and cbBTC. */
   collateralToken: string;
-  /** How much collateral this maker can still absorb, in USDC. */
-  makerBudgetUsdc: number;
+  /** Chainlink feed for the order's UNDERLYING (lowercase) — this is how we know ETH vs BTC. */
+  priceFeed: string;
+  /** How much this maker can still absorb, in the order's own collateral-token units. */
+  makerBudget: number;
   greeks: { delta?: number; iv?: number; gamma?: number; theta?: number; vega?: number };
 };
 
@@ -82,32 +84,43 @@ export async function collateralDecimals(client: ThetanutsClient, token: string)
   return _decCache.get(key)!;
 }
 
+/** Pure decode of one raw SDK order. Exported for tests — no network, no Date.now(). */
+export function decodeOrder(o: any, scale: number, nowSec: number, collateralDec: number): Candidate {
+  const expirySec = Number(o.order.expiry);
+  const makerIsBuyer = Boolean(o.order.isBuyer);
+  return {
+    raw: o,
+    isCall: Boolean(o.rawApiData?.isCall),
+    makerIsBuyer,
+    // If the maker is buying, you are on the other side: you sell.
+    yourSide: makerIsBuyer ? 'you sell the option' : 'you buy the option',
+    strike: Number(o.order.strikePrice) / 10 ** STRIKE_DECIMALS,
+    expiry: new Date(expirySec * 1000),
+    daysToExpiry: (expirySec - nowSec) / 86400,
+    pricePerContract: Number(o.order.price) / scale,
+    collateralToken: o.order.collateralToken,
+    priceFeed: String(o.rawApiData?.priceFeed ?? '').toLowerCase(),
+    makerBudget: Number(o.availableAmount) / 10 ** collateralDec,
+    greeks: o.rawApiData?.greeks ?? {},
+  };
+}
+
 /** Every live, funded, unexpired order on Base, decoded into something a UI can render. */
 export async function getBook(client = readClient()): Promise<Candidate[]> {
   const orders: any[] = await client.api.fetchOrders();
   const scale = await priceScale(client);
   const now = Math.floor(Date.now() / 1000);
-
-  return orders
-    .filter((o) => Number(o.order?.expiry ?? 0) > now && BigInt(o.availableAmount ?? 0) > 0n)
-    .map((o): Candidate => {
-      const expirySec = Number(o.order.expiry);
-      const makerIsBuyer = Boolean(o.order.isBuyer);
-      return {
-        raw: o,
-        isCall: Boolean(o.rawApiData?.isCall),
-        makerIsBuyer,
-        // If the maker is buying, you are on the other side: you sell.
-        yourSide: makerIsBuyer ? 'you sell the option' : 'you buy the option',
-        strike: Number(o.order.strikePrice) / 10 ** STRIKE_DECIMALS,
-        expiry: new Date(expirySec * 1000),
-        daysToExpiry: (expirySec - now) / 86400,
-        pricePerContract: Number(o.order.price) / scale,
-        collateralToken: o.order.collateralToken,
-        makerBudgetUsdc: Number(o.availableAmount) / 10 ** USDC_DECIMALS,
-        greeks: o.rawApiData?.greeks ?? {},
-      };
-    });
+  const live = orders.filter(
+    (o) => Number(o.order?.expiry ?? 0) > now && BigInt(o.availableAmount ?? 0) > 0n
+  );
+  const decs = new Map<string, number>();
+  for (const o of live) {
+    const t = String(o.order.collateralToken).toLowerCase();
+    if (!decs.has(t)) decs.set(t, await collateralDecimals(client, o.order.collateralToken));
+  }
+  return live.map((o) =>
+    decodeOrder(o, scale, now, decs.get(String(o.order.collateralToken).toLowerCase())!)
+  );
 }
 
 export type ProtectionSpec = {

@@ -419,9 +419,9 @@
     <div class="verdict" id="candVerdict" style="display:none;"></div>
   </div>
 
-  <!-- STEP 3: unified price/payoff chart -->
+  <!-- STEP 3: unified price chart -->
   <div class="step" id="step3">
-    <div class="step-label"><span class="step-num">3</span> Price, floor, deadline, and payoff — one picture</div>
+    <div class="step-label"><span class="step-num">3</span> Price, floor, and deadline — one picture</div>
     <div class="chart-wrap">
       <svg id="payoffChart" viewBox="0 0 700 320"></svg>
       <div class="chart-legend">
@@ -429,7 +429,6 @@
         <span><span class="dot" style="background:var(--danger)"></span> down candle</span>
         <span><span class="dot" style="background:var(--warn); border-radius:2px;"></span> your floor (strike)</span>
         <span><span class="dot" style="background:var(--dim); border-radius:2px;"></span> spot now</span>
-        <span><span class="dot" style="background:var(--accent)"></span> payoff at expiry (right edge)</span>
       </div>
       <div id="chartAttribution" style="font-size:11px; color:var(--dim); margin-top:6px;"></div>
     </div>
@@ -1035,7 +1034,7 @@ async function apiGet(path) {
 
 function renderUnifiedChart(data, history, historyDays) {
   const svg = document.getElementById('payoffChart');
-  const W = 700, H = 320, PAD_L = 60, PAD_R = 130, PAD_T = 26, PAD_B = 34;
+  const W = 700, H = 320, PAD_L = 60, PAD_R = 90, PAD_T = 26, PAD_B = 34;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
 
@@ -1096,34 +1095,6 @@ function renderUnifiedChart(data, history, historyDays) {
   `;
   const nowLine = `<line x1="${xNow.toFixed(1)}" y1="${PAD_T}" x2="${xNow.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="${CHART_COLORS.grid}" stroke-width="1"/>`;
 
-  // Payoff gutter on the right edge: transpose payoffCurve (spot on Y, pnl on X), sharing the price axis.
-  //
-  // CRITICAL: /api/quote returns the payoff over [strike*0.8, strike*1.2]
-  // (server.ts's payoffCurve call), but this chart's Y domain is driven by
-  // candles/strike/spot and is typically far narrower — often ~6-15% wide vs
-  // the payoff's 40%. Mapping every payoff point through the shared yS()
-  // therefore sends the endpoints hundreds of pixels outside a 320-tall
-  // viewBox (for strike 2400 with a 2280-2680 band the endpoints land at
-  // y=520 and y=-106), so most of the curve silently vanishes and what
-  // remains reads as a near-vertical stub.
-  //
-  // Fix: draw only the portion of the payoff that covers prices actually on
-  // screen, and clip as a backstop. This is honest — it shows the P/L across
-  // the visible price range — and requires no new math, so the no-fabricated-
-  // numbers rule holds: every point still comes straight from the server.
-  const visiblePts = data.payoff.filter(p => p.spot >= priceLo && p.spot <= priceHi);
-  const gutterX0 = W - PAD_R + 24;
-  const gutterW = PAD_R - 30;
-  let gutterSvg = '';
-  let gutterZero = gutterX0 + gutterW / 2;
-  if (visiblePts.length >= 2) {
-    const maxAbsPnl = Math.max(...visiblePts.map(p => Math.abs(p.pnl))) * 1.1 || 1;
-    const gx = pnl => gutterX0 + gutterW / 2 + (pnl / maxAbsPnl) * (gutterW / 2);
-    gutterZero = gx(0);
-    const gutterPath = 'M ' + visiblePts.map(p => `${gx(p.pnl).toFixed(1)},${yS(p.spot).toFixed(1)}`).join(' L ');
-    gutterSvg = `<path d="${gutterPath}" fill="none" stroke="${CHART_COLORS.accent}" stroke-width="2" clip-path="url(#plotClip)"/>`;
-  }
-
   svg.innerHTML = `
     <defs>
       <clipPath id="plotClip">
@@ -1136,21 +1107,17 @@ function renderUnifiedChart(data, history, historyDays) {
     ${spotLine}
     ${nowLine}
     ${expiryLine}
-    <line x1="${gutterZero.toFixed(1)}" y1="${PAD_T}" x2="${gutterZero.toFixed(1)}" y2="${(H - PAD_B).toFixed(1)}" stroke="${CHART_COLORS.dim}" stroke-width="1" stroke-dasharray="2,2"/>
-    ${gutterSvg}
-    <text x="${gutterX0.toFixed(1)}" y="${(H - 10).toFixed(1)}" fill="${CHART_COLORS.dim}" font-size="9" font-family="monospace">payoff</text>
   `;
 
-  // Attribution — four numbers, four named sources (design rule 3). A missing
-  // input is stated in place, never quietly omitted: a chart that lost its
-  // spot line must not look identical to one that never had a spot line.
+  // Attribution — named sources for all displayed data. A missing input is
+  // stated in place, never quietly omitted.
   const attribution = document.getElementById('chartAttribution');
   const spotText = spot
     ? `spot $${spot.price.toLocaleString(undefined,{maximumFractionDigits:0})} (Chainlink, ${new Date(spot.updatedAt).toLocaleTimeString()})` +
       (pctBelowSpot !== null ? ` · floor is ${pctBelowSpot.toFixed(1)}% below spot` : '')
     : 'SPOT UNAVAILABLE — no live price to compare your floor against';
   const historyText = history.historySource ? 'candles: Coinbase' : 'CANDLES UNAVAILABLE';
-  attribution.textContent = `${historyText} · ${spotText} · strike: live Thetanuts order · payoff: previewFillOrder()`;
+  attribution.textContent = `${historyText} · ${spotText} · strike: live Thetanuts order`;
   attribution.style.color = (spot && history.historySource) ? 'var(--dim)' : 'var(--warn)';
   if (history.spotError || history.historyError) {
     console.warn('chart degraded —', { spotError: history.spotError, historyError: history.historyError });

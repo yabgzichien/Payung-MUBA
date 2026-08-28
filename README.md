@@ -29,8 +29,10 @@ been burned by stop-losses or don't want to learn options jargon to protect them
 
 ## The AI (and what it is not allowed to do)
 
-The LLM (Gonka Router — a MUBA sponsor) does exactly one job: parse a sentence into
-`{asset, floorUsd, horizonDays}`, strictly validated. It never generates a price, a
+The LLM (Gonka Router — a MUBA sponsor) does exactly one job: transcribe a sentence into
+`{asset, quantity, floorTotalUsd, horizonDays}`, strictly validated. It is explicitly
+forbidden from dividing or multiplying — the per-unit strike a match is ranked against is
+derived in tested code (`impliedStrike`), never by the model. It never generates a price, a
 prediction, or any number the user sees. The agent's *judgment* — premium-vs-value verdict,
 coverage-gap warnings, refusing to improvise when nothing on the book fits — is computed
 deterministically from live data (`src/judgment.ts`).

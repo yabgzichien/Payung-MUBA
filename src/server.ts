@@ -165,7 +165,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return send(res, 200, { spec });
     } catch (e: any) {
       // Almost always "the LLM's output didn't validate against the strict
-      // {asset, floorUsd, horizonDays} schema" — a property of what the user
+      // {asset, quantity, floorTotalUsd, horizonDays} schema" — a property of what the user
       // typed, not a server fault. Re-tag so the caller gets 400, not 500.
       throw new ClientError(e?.message ?? String(e));
     }

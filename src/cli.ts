@@ -1,16 +1,19 @@
 /**
  * Day 1 CLI. Get a real transaction hash before you write a single line of UI.
  *
- *   npm run book                        # what's live right now
- *   npm run quote -- 2400 10 14         # price a $2400 floor with 10 USDC, 14d horizon (default 14)
- *   npm run whoami                      # check your burner wallet balances
- *   npm run deposit -- 12               # top up aBasUSDC via Aave if short
- *   npm run simulate -- 2400 10 14      # FREE dry run of the real transaction
- *   npm run execute -- 2400 10 14       # spends real USDC on Base mainnet
+ *   npm run book                              # what's live right now
+ *   npm run quote -- 1 2300 10 14             # price "1 ETH, $2300 total floor" with 10 USDC, 14d horizon (default 14)
+ *   npm run whoami                             # check your burner wallet balances
+ *   npm run deposit -- 12                      # top up aBasUSDC via Aave if short
+ *   npm run simulate -- 1 2300 10 14           # FREE dry run of the real transaction
+ *   npm run execute -- 1 2300 10 14            # spends real USDC on Base mainnet
  *
- * horizonDays is optional on quote/simulate/execute and defaults to 14 — the
- * same default `preflight` uses, so a candidate vetted with `preflight` is the
- * same candidate `execute` will pick, given the same floor.
+ * quantity defaults to 1, floorTotal to 2300, and horizonDays to 14 on
+ * quote/simulate/execute — the same defaults `preflight` uses, so a
+ * candidate vetted with `preflight` is the same candidate `execute` will
+ * pick when run with no arguments. The strike matched against is DERIVED
+ * (floorTotal / quantity) — see impliedStrike() in core.ts; there is no
+ * separate per-unit-price argument.
  */
 
 import 'dotenv/config';
@@ -18,7 +21,7 @@ import { ethers } from 'ethers';
 import {
   readClient, writeClient, getBook, findCandidates, quote,
   simulate, execute, payoffCurve, USDC_DECIMALS, coverageGapDays,
-  collateralDecimals, dollarTokens, tokenSymbol,
+  collateralDecimals, dollarTokens, tokenSymbol, impliedStrike,
 } from './core.js';
 import { judgeQuote } from './judgment.js';
 import { ensureDollarCollateral } from './aave.js';
@@ -51,11 +54,8 @@ async function main() {
     case 'whoami': {
       const client = writeClient();
       const addr = await client.getSignerAddress();
-      const usdc = client.chainConfig.tokens.USDC.address;
-      const bal = await client.erc20.getBalance(usdc, addr);
       const eth = await client.provider!.getBalance(addr);
       console.log(`\naddress   ${addr}`);
-      console.log(`USDC      ${(Number(bal) / 10 ** USDC_DECIMALS).toFixed(4)}`);
       console.log(`ETH (gas) ${ethers.formatEther(eth)}`);
 
       const book = await getBook(client);
@@ -63,8 +63,12 @@ async function main() {
       for (const t of dollarSet) {
         const sym = await tokenSymbol(client, t);
         const d = await collateralDecimals(client, t);
-        const b = await client.erc20.getBalance(t, addr);
-        console.log(`${sym.padEnd(9)} ${(Number(b) / 10 ** d).toFixed(4)}`);
+        try {
+          const b = await client.erc20.getBalance(t, addr);
+          console.log(`${sym.padEnd(9)} ${(Number(b) / 10 ** d).toFixed(4)}`);
+        } catch {
+          console.log(`${sym.padEnd(9)} 0.0000 (RPC retry skipped)`);
+        }
       }
 
       console.log(`\nexplorer  https://basescan.org/address/${addr}\n`);
@@ -93,11 +97,13 @@ async function main() {
     case 'quote':
     case 'simulate':
     case 'execute': {
-      const floorUsd = Number(args[0] ?? 2400);
-      const collateral = Number(args[1] ?? 10);
-      const horizonDays = Number(args[2] ?? 14);
+      const quantity = Number(args[0] ?? 1);
+      const floorTotalUsd = Number(args[1] ?? 2300);
+      const collateral = Number(args[2] ?? 10);
+      const horizonDays = Number(args[3] ?? 14);
 
-      const spec = { asset: 'ETH' as const, floorUsd, horizonDays };
+      const spec = { asset: 'ETH' as const, quantity, floorTotalUsd, horizonDays };
+      const strike = impliedStrike(spec);
       const candidates = await findCandidates(spec, readClient());
       if (!candidates.length) {
         console.log('No fillable structure matches that constraint right now.');
@@ -105,7 +111,7 @@ async function main() {
         return;
       }
 
-      console.log(`\nCandidates for a ${usd(floorUsd)} floor on ETH:\n`);
+      console.log(`\nCandidates for ${quantity} ETH needing ${usd(floorTotalUsd)} total (implied strike ${usd(strike)}):\n`);
       candidates.forEach(show);
 
       const pick = candidates[0];
@@ -169,12 +175,13 @@ async function main() {
       // Run minutes before the demo: is the pipeline alive, and which candidates are actually fillable RIGHT NOW?
       const spec = {
         asset: 'ETH' as const,
-        floorUsd: Number(args[0] ?? 2300),
-        horizonDays: Number(args[1] ?? 14),
+        quantity: Number(args[0] ?? 1),
+        floorTotalUsd: Number(args[1] ?? 2300),
+        horizonDays: Number(args[2] ?? 14),
       };
       const t0 = Date.now();
       const candidates = await findCandidates(spec);
-      console.log(`\nbook+filter latency ${Date.now() - t0}ms · ${candidates.length} candidates for $${spec.floorUsd}/${spec.horizonDays}d`);
+      console.log(`\nbook+filter latency ${Date.now() - t0}ms · ${candidates.length} candidates for $${spec.floorTotalUsd} total on ${spec.quantity} ETH / ${spec.horizonDays}d`);
       if (!candidates.length) { console.log('NO CANDIDATES — adjust the demo constraint before going on stage.'); return; }
       for (const c of candidates.slice(0, 3)) {
         const sim = await simulate(c, 10);
@@ -194,7 +201,7 @@ async function main() {
       const text = args.join(' ');
       if (!text) { console.log('usage: npm run ask -- "your constraint in plain words"'); return; }
       const spec = await parseIntent(text, gonkaLlm());
-      console.log(`\nParsed: protect ${spec.asset} at a $${spec.floorUsd} floor for ${spec.horizonDays} days\n`);
+      console.log(`\nParsed: protect ${spec.quantity} ${spec.asset} at a $${spec.floorTotalUsd} total floor for ${spec.horizonDays} days (implied strike $${impliedStrike(spec).toFixed(2)})\n`);
       const candidates = await findCandidates(spec);
       if (!candidates.length) {
         console.log('No fillable structure matches that constraint right now.');
@@ -208,11 +215,11 @@ async function main() {
     default:
       console.log('commands: book | whoami | deposit | quote | simulate | execute | preflight | ask');
       console.log('  npm run book');
-      console.log('  npm run quote -- 2400 10 14');
-      console.log('  npm run simulate -- 2400 10 14');
-      console.log('  npm run execute -- 2400 10 14');
+      console.log('  npm run quote -- 1 2400 10 14        # <quantity> <floorTotalUsd> <collateralUsdc> [horizonDays]');
+      console.log('  npm run simulate -- 1 2400 10 14');
+      console.log('  npm run execute -- 1 2400 10 14');
       console.log('  npm run deposit -- 12');
-      console.log('  npm run preflight -- 2300 14');
+      console.log('  npm run preflight -- 1 2300 14        # <quantity> <floorTotalUsd> [horizonDays]');
       console.log('  npm run ask -- "I have 1 ETH and need it worth at least $2,300 in two weeks"');
   }
 }

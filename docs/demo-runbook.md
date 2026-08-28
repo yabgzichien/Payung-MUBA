@@ -8,8 +8,8 @@ The banked trade is the submission; the live attempt is theater.
 - [ ] `BASE_RPC_URL` in `.env` is a paid/free-tier Alchemy or Infura key — NOT `mainnet.base.org`,
       and NOT venue wifi + public RPC (that combination is how demos die).
 - [ ] Burner wallet holds ~$20 USDC + ~$1 of ETH gas on Base. `npm run whoami` to confirm.
-- [ ] **Execute the banked trade:** `npm run preflight -- 2300 14`, pick the top ✓ candidate,
-      then run the full flow in the web app (or `npm run execute -- 2300 10`) and SAVE:
+- [ ] **Execute the banked trade:** `npm run preflight -- 1 2300 14`, pick the top ✓ candidate,
+      then run the full flow in the web app (or `npm run execute -- 1 2300 10`) and SAVE:
       - the BaseScan URL,
       - the "you paid $X" figure (from Transfer logs — this is the max-loss number),
       - a screen recording of the whole flow, NL sentence → hash (this is the backup video).
@@ -36,7 +36,7 @@ hash, and close with "we plan to keep building this" (they explicitly support po
 
 ## Minutes before
 
-- [ ] `npm run preflight -- <floor> <days>` — confirms RPC latency and 3 fillable fallbacks.
+- [ ] `npm run preflight -- <quantity> <floorTotal> <days>` — confirms RPC latency and 3 fillable fallbacks.
 - [ ] Web app running (`npm run web`), page loaded, wallet funded.
 - [ ] Backup video open in a tab.
 

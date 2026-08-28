@@ -132,38 +132,94 @@ export type ProtectionSpec = {
   horizonDays: number;
 };
 
+export type FilterConfig = {
+  /** Lowercase collateral-token addresses treated as dollar-denominated (USDC, aBasUSDC). */
+  dollarTokens: Set<string>;
+  /** Lowercase Chainlink feed address for the spec's underlying asset. */
+  assetPriceFeed: string;
+};
+
 /**
- * Translate a human constraint into candidate structures.
+ * Pure filter over an already-decoded book. Exported for tests.
  *
- * This is the function the LLM calls. It does NOT invent anything — it filters
- * the live book. If it returns [], there is genuinely nothing fillable that
- * matches, and the agent must say so rather than improvise.
+ * This is the function whose integrity is the whole pitch. It does NOT invent
+ * anything — if it returns [], there is genuinely nothing fillable that
+ * matches, and the agent must say so rather than improvise (FR9).
+ */
+export function filterCandidates(
+  book: Candidate[],
+  spec: ProtectionSpec,
+  cfg: FilterConfig
+): Candidate[] {
+  return (
+    book
+      // A floor under a long asset position is a PUT — the correct instrument,
+      // not a judgement call or a prediction.
+      .filter((c) => !c.isCall)
+      // CRITICAL: to BUY protection you need a maker who is SELLING. Only ~20%
+      // of the book qualifies. Without this you'd be writing naked puts.
+      .filter((c) => !c.makerIsBuyer)
+      // CRITICAL: protection must be on the asset the user actually holds.
+      // The book is multi-asset; strike distance is NOT a proxy for underlying.
+      .filter((c) => c.priceFeed === cfg.assetPriceFeed)
+      // Dollar-denominated collateral only, so premiums are in dollars. The live
+      // book quotes buyable puts in aBasUSDC (Aave-wrapped USDC), not raw USDC.
+      .filter((c) => cfg.dollarTokens.has(c.collateralToken.toLowerCase()))
+      .filter((c) => c.daysToExpiry >= spec.horizonDays * 0.6)
+      .filter((c) => c.daysToExpiry <= spec.horizonDays * 2.5)
+      // Prefer strikes near the requested floor.
+      .sort((a, b) => Math.abs(a.strike - spec.floorUsd) - Math.abs(b.strike - spec.floorUsd))
+      .slice(0, 8)
+  );
+}
+
+/** ERC20 symbol, cached per token address. */
+const _symCache = new Map<string, string>();
+export async function tokenSymbol(client: ThetanutsClient, token: string): Promise<string> {
+  const key = token.toLowerCase();
+  if (!_symCache.has(key)) {
+    _symCache.set(key, await client.erc20.getSymbol(token));
+  }
+  return _symCache.get(key)!;
+}
+
+/**
+ * Which collateral tokens in this book are dollar-denominated?
+ * Discovered from the live book by symbol (USDC, aBasUSDC), never hardcoded —
+ * the book has changed its quoting token before and can again.
+ */
+export async function dollarTokens(
+  client: ThetanutsClient,
+  book: Candidate[]
+): Promise<Set<string>> {
+  const distinct = [...new Set(book.map((c) => c.collateralToken.toLowerCase()))];
+  const out = new Set<string>();
+  for (const t of distinct) {
+    const sym = await tokenSymbol(client, t);
+    if (sym.toUpperCase().endsWith('USDC')) out.add(t);
+  }
+  return out;
+}
+
+/**
+ * Translate a human constraint into candidate structures, against the live book.
+ * Thin wrapper: gathers live inputs, then delegates to the pure filter above.
  */
 export async function findCandidates(
   spec: ProtectionSpec,
   client = readClient()
 ): Promise<Candidate[]> {
   const book = await getBook(client);
-  const usdc = client.chainConfig.tokens.USDC.address.toLowerCase();
-
-  // A floor under a long asset position is a PUT. This is not a judgement call
-  // or a prediction — it is the correct instrument for the stated constraint.
-  return book
-    .filter((c) => !c.isCall)
-    // CRITICAL: to BUY protection you need a maker who is SELLING. Only ~20% of
-    // the book qualifies. Without this filter you would be writing naked puts —
-    // the exact opposite of protection, with unbounded-feeling risk.
-    .filter((c) => !c.makerIsBuyer)
-    // Keep it to USDC collateral so premiums are denominated in dollars.
-    .filter((c) => c.collateralToken.toLowerCase() === usdc)
-    .filter((c) => c.daysToExpiry >= spec.horizonDays * 0.6)
-    .filter((c) => c.daysToExpiry <= spec.horizonDays * 2.5)
-    // Prefer strikes near the requested floor.
-    .sort(
-      (a, b) =>
-        Math.abs(a.strike - spec.floorUsd) - Math.abs(b.strike - spec.floorUsd)
-    )
-    .slice(0, 8);
+  const feed = client.chainConfig.priceFeeds[spec.asset];
+  if (!feed) {
+    throw new Error(
+      `No price feed configured for ${spec.asset}. Known: ${Object.keys(client.chainConfig.priceFeeds).join(', ')}`
+    );
+  }
+  return filterCandidates(book, spec, {
+    dollarTokens: await dollarTokens(client, book),
+    assetPriceFeed: feed.toLowerCase(),
+  });
 }
 
 export type Quote = {

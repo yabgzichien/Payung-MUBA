@@ -198,6 +198,12 @@
     color: var(--dim);
   }
   .verdict b { color: var(--text); }
+  .verdict.reasonable { border: 1px solid var(--accent-dim); background: rgba(79,209,165,0.06); }
+  .verdict.reasonable b { color: var(--accent); }
+  .verdict.expensive { border: 1px solid #6b5a2a; background: rgba(255,184,79,0.06); }
+  .verdict.expensive b { color: var(--warn); }
+  .verdict.not-worth-it { border: 1px solid #6b2a2a; background: rgba(255,107,107,0.08); }
+  .verdict.not-worth-it b { color: var(--danger); }
 
   svg { display: block; width: 100%; height: auto; }
   .chart-wrap { margin-top: 16px; }
@@ -839,6 +845,7 @@ async function selectCandidate(i, el) {
     const targetSpend = heldAmount * state.selected.pricePerContract;
     const data = await api('/api/quote', { id: state.selected.id, spendUsdc: targetSpend });
     state.quote = data;
+    verdict.className = 'verdict ' + data.judgment.verdict;
     verdict.innerHTML = `<b>Agent verdict: ${data.judgment.verdict.replace(/-/g, ' ')}.</b> ` +
       data.judgment.reasons.map(r => r).join(' ');
     setStep(3);
@@ -883,13 +890,21 @@ async function selectCandidate(i, el) {
       `;
     }
 
+    const coveragePct = heldAmount > 0 ? (q.contracts / heldAmount) * 100 : 100;
     const coverageNote = heldAmount > 0
-      ? ` This covers <b>${q.contracts.toFixed(4)}</b> of your <b>${heldAmount}</b> ${asset} — the rest is unprotected.`
+      ? ` This covers <b>${q.contracts.toFixed(4)}</b> of your <b>${heldAmount}</b> ${asset}` +
+        (coveragePct < 50
+          ? ` — <b style="color:var(--danger)">only ${coveragePct.toFixed(0)}% of what you asked to protect; the rest is unprotected.</b>`
+          : ` — the rest is unprotected.`)
+      : '';
+    const gapDays = state.selected?.coverageGapDays ?? 0;
+    const coverageGapNote = gapDays > 0.25
+      ? ` <b style="color:var(--warn)">Protection ends ${gapDays.toFixed(1)} days before your stated deadline</b> — after ${q.expiryIso.slice(0,10)} you are unprotected again.`
       : '';
     document.getElementById('payoffSummary').innerHTML =
       `You spend exactly <b>$${q.spendUsdc.toFixed(2)} USDC</b>${capNote} — that is your maximum loss; nothing more can ever be taken. ` +
       `If the price is below <b>$${q.strike.toLocaleString()}</b> at expiry (${q.expiryIso.slice(0,10)}), the contract pays you the difference in cash — your real coins are never sold. ` +
-      `If it stays above, the contract expires and you are out the premium — but your coins are worth more anyway.${coverageNote}`;
+      `If it stays above, the contract expires and you are out the premium — but your coins are worth more anyway.${coverageNote}${coverageGapNote}`;
     
     renderStep4OrderSummary();
     updateWalletUI();

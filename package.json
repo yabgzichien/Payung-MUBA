@@ -11,6 +11,7 @@
     "execute": "tsx src/cli.ts execute",
     "whoami": "tsx src/cli.ts whoami",
     "deposit": "tsx src/cli.ts deposit",
+    "ask": "tsx src/cli.ts ask",
     "test": "vitest run"
   },
   "dependencies": {

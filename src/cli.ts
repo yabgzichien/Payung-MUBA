@@ -17,6 +17,7 @@ import {
   collateralDecimals, dollarTokens, tokenSymbol,
 } from './core.js';
 import { ensureDollarCollateral } from './aave.js';
+import { parseIntent, gonkaLlm } from './intent.js';
 
 const [cmd, ...args] = process.argv.slice(2);
 const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -146,13 +147,30 @@ async function main() {
       break;
     }
 
+    case 'ask': {
+      // npm run ask -- "I have 1 ETH and need it worth at least $2,300 in two weeks"
+      const text = args.join(' ');
+      if (!text) { console.log('usage: npm run ask -- "your constraint in plain words"'); return; }
+      const spec = await parseIntent(text, gonkaLlm());
+      console.log(`\nParsed: protect ${spec.asset} at a $${spec.floorUsd} floor for ${spec.horizonDays} days\n`);
+      const candidates = await findCandidates(spec);
+      if (!candidates.length) {
+        console.log('No fillable structure matches that constraint right now.');
+        console.log('(This is the correct answer. The agent does not improvise one.)');
+        return;
+      }
+      candidates.forEach(show);
+      break;
+    }
+
     default:
-      console.log('commands: book | whoami | deposit | quote | simulate | execute');
+      console.log('commands: book | whoami | deposit | quote | simulate | execute | ask');
       console.log('  npm run book');
       console.log('  npm run quote -- 2400 10');
       console.log('  npm run simulate -- 2400 10');
       console.log('  npm run execute -- 2400 10');
       console.log('  npm run deposit -- 12');
+      console.log('  npm run ask -- "I have 1 ETH and need it worth at least $2,300 in two weeks"');
   }
 }
 

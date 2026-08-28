@@ -222,7 +222,46 @@ export async function findCandidates(
   });
 }
 
+/** Cap a requested spend to what the maker can still absorb. Never silent: the flag travels to the UI. */
+export function capSpend(
+  requestedUsdc: number,
+  makerBudget: number
+): { spendUsdc: number; capped: boolean } {
+  if (requestedUsdc <= makerBudget) return { spendUsdc: requestedUsdc, capped: false };
+  return { spendUsdc: makerBudget, capped: true };
+}
+
+/** Refuse to send against an order that expires within the buffer. The fix is a fresh quote, so say so. */
+export function assertFillable(c: Candidate, nowSec: number, bufferSec = 60): void {
+  const expirySec = Math.floor(c.expiry.getTime() / 1000);
+  if (expirySec <= nowSec + bufferSec) {
+    throw new Error(
+      `Order expires at ${c.expiry.toISOString()} — too close to send safely. Re-quote and pick a fresh candidate.`
+    );
+  }
+}
+
+const TRANSFER_TOPIC = ethers.id('Transfer(address,address,uint256)');
+
+/** Sum ERC20 Transfer amounts OUT of `from` on `token`, from receipt logs. This is the empirical "what you actually paid". */
+export function sumDebits(
+  logs: Array<{ address: string; topics: string[]; data: string }>,
+  token: string,
+  from: string
+): bigint {
+  const fromTopic = ethers.zeroPadValue(from, 32).toLowerCase();
+  return logs
+    .filter((l) => l.address.toLowerCase() === token.toLowerCase())
+    .filter((l) => l.topics?.[0] === TRANSFER_TOPIC && l.topics?.[1]?.toLowerCase() === fromTopic)
+    .reduce((acc, l) => acc + BigInt(l.data), 0n);
+}
+
 export type Quote = {
+  /** What the user asked to spend. */
+  requestedUsdc: number;
+  /** What will actually be sent as the fill amount (capped to maker budget). */
+  spendUsdc: number;
+  capped: boolean;
   collateralUsdc: number;
   numContracts: string;
   maxContracts: string;
@@ -242,10 +281,11 @@ export type Quote = {
  */
 export async function quote(
   candidate: Candidate,
-  collateralUsdc: number,
+  requestedUsdc: number,
   client = readClient()
 ): Promise<Quote> {
-  const amount = BigInt(Math.round(collateralUsdc * 10 ** USDC_DECIMALS));
+  const { spendUsdc, capped } = capSpend(requestedUsdc, candidate.makerBudget);
+  const amount = BigInt(Math.round(spendUsdc * 10 ** USDC_DECIMALS));
   const preview: any = client.optionBook.previewFillOrder(candidate.raw, amount);
   const scale = await priceScale(client);
 
@@ -256,6 +296,9 @@ export async function quote(
   const contracts = Number(preview.totalCollateral) / 10 ** USDC_DECIMALS / candidate.strike;
 
   return {
+    requestedUsdc,
+    spendUsdc,
+    capped,
     collateralUsdc: Number(preview.totalCollateral) / 10 ** USDC_DECIMALS,
     numContracts: String(preview.numContracts),
     maxContracts: String(preview.maxContracts),
@@ -295,13 +338,16 @@ export async function simulate(
  */
 export async function execute(
   candidate: Candidate,
-  collateralUsdc: number,
+  spendUsdc: number,
   client = writeClient()
-): Promise<{ hash: string; explorer: string; receipt: any }> {
-  const amount = BigInt(Math.round(collateralUsdc * 10 ** USDC_DECIMALS));
+): Promise<{ hash: string; explorer: string; receipt: any; paidUnits: bigint; paidUsd: number }> {
+  const amount = BigInt(Math.round(spendUsdc * 10 ** USDC_DECIMALS));
+
+  // Spec edge case: the order can expire between quoting and confirming.
+  assertFillable(candidate, Math.floor(Date.now() / 1000));
 
   // Fail loudly before spending gas if the fill would revert.
-  const sim = await simulate(candidate, collateralUsdc, client);
+  const sim = await simulate(candidate, spendUsdc, client);
   if (!sim.ok) throw new Error(`Simulation failed, refusing to send: ${sim.error}`);
 
   // Approve THIS order's collateral token, not a hardcoded USDC address.
@@ -312,8 +358,20 @@ export async function execute(
   );
 
   const receipt: any = await client.optionBook.fillOrder(candidate.raw, amount);
-  const hash = receipt?.hash ?? receipt?.transactionHash ?? String(receipt);
-  return { hash, explorer: `https://basescan.org/tx/${hash}`, receipt };
+  const rec = receipt?.receipt ?? receipt;
+  const hash = rec?.hash ?? rec?.transactionHash ?? String(receipt);
+
+  // The empirical answer to "who posts what": read what actually left the wallet.
+  const me = await client.getSignerAddress();
+  const dec = await collateralDecimals(client, candidate.collateralToken);
+  const paidUnits = sumDebits(rec?.logs ?? [], candidate.collateralToken, me);
+  return {
+    hash,
+    explorer: `https://basescan.org/tx/${hash}`,
+    receipt,
+    paidUnits,
+    paidUsd: Number(paidUnits) / 10 ** dec,
+  };
 }
 
 /** Payoff curve for the UI. Pure math — no network, no LLM. */

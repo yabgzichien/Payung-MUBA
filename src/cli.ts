@@ -78,7 +78,11 @@ async function main() {
       console.log(`side          ${q.yourSide.toUpperCase()}`);
       console.log(`strike        ${usd(q.strike)}`);
       console.log(`expiry        ${q.expiry.toISOString().slice(0, 16).replace('T', ' ')}`);
-      console.log(`collateral    ${usd(q.collateralUsdc)}   <- posted upfront by you`);
+      if (q.capped) {
+        console.log(`you spend     ${usd(q.spendUsdc)}  (capped — maker can only absorb ${usd(q.spendUsdc)} of your requested ${usd(q.requestedUsdc)})`);
+      } else {
+        console.log(`you spend     ${usd(q.spendUsdc)}`);
+      }
       console.log(`premium       ${usd(q.premiumUsdc)}`);
       console.log(`contracts     ${q.numContracts} (raw)`);
 
@@ -86,8 +90,8 @@ async function main() {
       console.log(`\npayoff:`);
       curve.forEach((p) => console.log(`  spot ${usd(p.spot).padEnd(10)} pnl ${usd(p.pnl)}`));
 
-      console.log(`\nMAX LOSS: bounded by collateral posted = ${usd(q.collateralUsdc)}`);
-      console.log(`^ VERIFY THIS against the contract before you say it to a judge.\n`);
+      console.log(`\nMAX LOSS (you buy): what leaves your wallet today, and nothing more —`);
+      console.log(`the exact debit is read from the fill receipt's Transfer logs on execute.\n`);
 
       if (cmd === 'quote') break;
 
@@ -98,8 +102,9 @@ async function main() {
 
       console.log('\n*** SPENDING REAL USDC ON BASE MAINNET ***');
       const res = await execute(pick, collateral);
-      console.log(`\n  tx  ${res.hash}`);
-      console.log(`  ->  ${res.explorer}\n`);
+      console.log(`\n  tx    ${res.hash}`);
+      console.log(`  paid  ${usd(res.paidUsd)}  <- read from Transfer logs; this is the max-loss number to say on stage`);
+      console.log(`  ->    ${res.explorer}\n`);
       console.log('Put that URL on screen during the pitch.\n');
       break;
     }

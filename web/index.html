@@ -382,7 +382,7 @@
       <div id="nlError" style="color:var(--danger); font-size:12px; margin-top:6px;"></div>
     </div>
     <div class="field-row">
-      <div class="field">
+      <div class="field" style="max-width:110px;">
         <label>Asset you hold</label>
         <select id="asset">
           <option value="ETH">ETH</option>
@@ -391,13 +391,17 @@
       </div>
       <div class="field">
         <label>Amount you hold</label>
-        <input id="amount" type="number" value="1" step="0.1" min="0.1" />
+        <input id="amount" type="number" value="1" step="any" min="0.000001" />
       </div>
       <div class="field">
-        <label>Floor price you need ($)</label>
-        <input id="floor" type="number" value="2300" step="10" />
+        <label id="unitFloorLabel">Market floor ($ / ETH)</label>
+        <input id="unitFloor" type="number" value="2300" step="10" />
       </div>
       <div class="field">
+        <label>Total floor value ($)</label>
+        <input id="floor" type="number" value="2300" step="any" />
+      </div>
+      <div class="field" style="max-width:120px;">
         <label>By when (days)</label>
         <input id="days" type="number" value="14" min="1" max="90" />
       </div>
@@ -654,20 +658,52 @@ if (activeInjectedProvider) {
 
 // ── Core Flow ──────────────────────────────────────────────────────────────────
 
+function onAssetChange() {
+  const asset = document.getElementById('asset').value;
+  document.getElementById('unitFloorLabel').textContent = `Market floor ($ / ${asset})`;
+  onConstraintChange();
+}
+
+function syncFloorFromUnit() {
+  const amount = Number(document.getElementById('amount').value) || 0;
+  const unit = Number(document.getElementById('unitFloor').value) || 0;
+  if (amount > 0 && unit > 0) {
+    const total = amount * unit;
+    document.getElementById('floor').value = Number(total.toFixed(4));
+  }
+  onConstraintChange();
+}
+
+function syncFloorFromTotal() {
+  const amount = Number(document.getElementById('amount').value) || 0;
+  const total = Number(document.getElementById('floor').value) || 0;
+  if (amount > 0 && total > 0) {
+    const unit = total / amount;
+    document.getElementById('unitFloor').value = Number(unit.toFixed(2));
+  }
+  onConstraintChange();
+}
+
+function onAmountChange() {
+  const amount = Number(document.getElementById('amount').value) || 0;
+  const unit = Number(document.getElementById('unitFloor').value) || 0;
+  if (amount > 0 && unit > 0) {
+    const total = amount * unit;
+    document.getElementById('floor').value = Number(total.toFixed(4));
+  }
+  onConstraintChange();
+}
+
 function restateSentence() {
   const asset = document.getElementById('asset').value;
-  const amount = Number(document.getElementById('amount').value) || 1;
+  const amount = Number(document.getElementById('amount').value) || 0;
   const floorTotal = Number(document.getElementById('floor').value) || 0;
+  const unitFloor = Number(document.getElementById('unitFloor').value) || (amount > 0 ? floorTotal / amount : 0);
   const days = document.getElementById('days').value || '14';
-  // Same formula as core.ts's impliedStrike(), duplicated deliberately: this
-  // is live-as-you-type feedback before any server round trip exists to ask.
-  // The number that actually GATES a match (filterCandidates' ranking,
-  // validateSpec's plausibility check) always comes from the server's
-  // impliedStrike() — this is display-only, never fed back into a decision.
-  const perUnit = amount > 0 ? floorTotal / amount : 0;
+
   document.getElementById('restated').innerHTML =
-    `"I have <b>${amount} ${asset}</b>. I need it to be worth at least <b class="accent">$${floorTotal.toLocaleString()}</b> total in <b>${days} days</b>" ` +
-    `— that's a floor of <b class="accent">$${perUnit.toLocaleString(undefined, {maximumFractionDigits: 2})} per ${asset}</b>.`;
+    `"I have <b>${amount} ${asset}</b>. I need it to be worth at least <b class="accent">$${floorTotal.toLocaleString(undefined, {maximumFractionDigits: 2})} total</b> in <b>${days} days</b>" ` +
+    `— that's a market floor of <b class="accent">$${unitFloor.toLocaleString(undefined, {maximumFractionDigits: 2})} per ${asset}</b>.`;
 }
 
 let constraintChangeTimer = null;
@@ -701,9 +737,11 @@ function onConstraintChange() {
   }, 400);
 }
 
-['asset','amount','floor','days'].forEach(id =>
-  document.getElementById(id).addEventListener('input', onConstraintChange)
-);
+document.getElementById('asset').addEventListener('change', onAssetChange);
+document.getElementById('amount').addEventListener('input', onAmountChange);
+document.getElementById('unitFloor').addEventListener('input', syncFloorFromUnit);
+document.getElementById('floor').addEventListener('input', syncFloorFromTotal);
+document.getElementById('days').addEventListener('input', onConstraintChange);
 
 async function parseNL() {
   const text = document.getElementById('nl').value.trim();
@@ -715,8 +753,11 @@ async function parseNL() {
   try {
     const { spec } = await api('/api/parse', { text });
     document.getElementById('asset').value = spec.asset;
+    document.getElementById('unitFloorLabel').textContent = `Market floor ($ / ${spec.asset})`;
     document.getElementById('amount').value = spec.quantity;
     document.getElementById('floor').value = spec.floorTotalUsd;
+    const perUnit = spec.quantity > 0 ? spec.floorTotalUsd / spec.quantity : spec.floorTotalUsd;
+    document.getElementById('unitFloor').value = Number(perUnit.toFixed(2));
     document.getElementById('days').value = spec.horizonDays;
     restateSentence();
   } catch (e) {
@@ -1350,6 +1391,13 @@ function resetFlow() {
   if (stale) stale.style.display = 'none';
   const farMiss = document.getElementById('candFarMiss');
   if (farMiss) farMiss.style.display = 'none';
+  document.getElementById('asset').value = 'ETH';
+  document.getElementById('unitFloorLabel').textContent = 'Market floor ($ / ETH)';
+  document.getElementById('amount').value = '1';
+  document.getElementById('unitFloor').value = '2300';
+  document.getElementById('floor').value = '2300';
+  document.getElementById('days').value = '14';
+  restateSentence();
   setStep(1);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }

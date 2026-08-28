@@ -5,12 +5,12 @@ const llmReturning = (s: string) => async () => s;
 
 describe('parseIntent', () => {
   it('accepts clean JSON', async () => {
-    const spec = await parseIntent('x', llmReturning('{"asset":"ETH","floorUsd":2300,"horizonDays":14}'));
-    expect(spec).toEqual({ asset: 'ETH', floorUsd: 2300, horizonDays: 14 });
+    const spec = await parseIntent('x', llmReturning('{"asset":"ETH","quantity":1,"floorTotalUsd":2300,"horizonDays":14}'));
+    expect(spec).toEqual({ asset: 'ETH', quantity: 1, floorTotalUsd: 2300, horizonDays: 14 });
   });
 
   it('extracts JSON wrapped in prose', async () => {
-    const spec = await parseIntent('x', llmReturning('Sure! {"asset":"BTC","floorUsd":60000,"horizonDays":30} there.'));
+    const spec = await parseIntent('x', llmReturning('Sure! {"asset":"BTC","quantity":1,"floorTotalUsd":60000,"horizonDays":30} there.'));
     expect(spec.asset).toBe('BTC');
   });
 
@@ -19,12 +19,22 @@ describe('parseIntent', () => {
   });
 
   it('rejects unsupported assets', async () => {
-    await expect(parseIntent('x', llmReturning('{"asset":"DOGE","floorUsd":1,"horizonDays":7}'))).rejects.toThrow(/Unsupported asset/);
+    await expect(parseIntent('x', llmReturning('{"asset":"DOGE","quantity":1,"floorTotalUsd":1,"horizonDays":7}'))).rejects.toThrow(/Unsupported asset/);
   });
 
-  it('rejects out-of-range horizons and floors', async () => {
-    await expect(parseIntent('x', llmReturning('{"asset":"ETH","floorUsd":2300,"horizonDays":400}'))).rejects.toThrow(/1-90/);
-    await expect(parseIntent('x', llmReturning('{"asset":"ETH","floorUsd":-5,"horizonDays":7}'))).rejects.toThrow(/floor/i);
+  it('rejects out-of-range horizons', async () => {
+    await expect(parseIntent('x', llmReturning('{"asset":"ETH","quantity":1,"floorTotalUsd":2300,"horizonDays":400}'))).rejects.toThrow(/1-90/);
+  });
+
+  it('rejects a missing or non-positive quantity', async () => {
+    await expect(parseIntent('x', llmReturning('{"asset":"ETH","floorTotalUsd":2300,"horizonDays":7}'))).rejects.toThrow(/quantity/i);
+    await expect(parseIntent('x', llmReturning('{"asset":"ETH","quantity":0,"floorTotalUsd":2300,"horizonDays":7}'))).rejects.toThrow(/quantity/i);
+    await expect(parseIntent('x', llmReturning('{"asset":"ETH","quantity":-1,"floorTotalUsd":2300,"horizonDays":7}'))).rejects.toThrow(/quantity/i);
+  });
+
+  it('rejects an implied strike outside the plausible range (the $798-for-0.32-ETH regression class)', async () => {
+    // 1000 ETH at a $798 total floor implies a $0.80/ETH strike — implausible.
+    await expect(parseIntent('x', llmReturning('{"asset":"ETH","quantity":1000,"floorTotalUsd":798,"horizonDays":7}'))).rejects.toThrow(/implied|strike/i);
   });
 
   it('rejects non-JSON garbage', async () => {
@@ -35,14 +45,14 @@ describe('parseIntent', () => {
   // LAST `}` in the whole response. A nested answer like `{"result": {...}}`
   // is itself a single balanced top-level object, so it parses successfully
   // either way — but the real fields live one level down, leaving
-  // asset/floorUsd/horizonDays undefined at the top. That used to surface as
-  // a misleading "Unsupported asset: undefined", which looks like an asset
-  // validation failure rather than a shape problem. It must now be reported
-  // as a clear, correctly-attributed shape error instead.
+  // asset/quantity/floorTotalUsd/horizonDays undefined at the top. That used
+  // to surface as a misleading "Unsupported asset: undefined", which looks
+  // like an asset validation failure rather than a shape problem. It must
+  // now be reported as a clear, correctly-attributed shape error instead.
   it('rejects a nested answer object with a shape error, not a misleading asset error', async () => {
     const promise = parseIntent(
       'x',
-      llmReturning('{"result":{"asset":"ETH","floorUsd":2300,"horizonDays":14}}'),
+      llmReturning('{"result":{"asset":"ETH","quantity":1,"floorTotalUsd":2300,"horizonDays":14}}'),
     );
     await expect(promise).rejects.toThrow(/shape/i);
     await expect(promise).rejects.not.toThrow(/Unsupported asset/);
@@ -61,17 +71,23 @@ describe('parseIntent', () => {
   it('fails closed (not a JSON-parse crash) when a format example precedes the real answer', async () => {
     const promise = parseIntent(
       'x',
-      llmReturning('Format: {"asset":"ETH"} Answer: {"asset":"BTC","floorUsd":60000,"horizonDays":30}'),
+      llmReturning('Format: {"asset":"ETH"} Answer: {"asset":"BTC","quantity":1,"floorTotalUsd":60000,"horizonDays":30}'),
     );
-    await expect(promise).rejects.toThrow(/floor/i);
+    await expect(promise).rejects.toThrow(/quantity/i);
     await expect(promise).rejects.not.toThrow(/invalid JSON/);
   });
 });
 
 describe('validateSpec', () => {
   it('round-trips a valid spec object', () => {
-    expect(validateSpec({ asset: 'ETH', floorUsd: 2300, horizonDays: 14 })).toEqual({
-      asset: 'ETH', floorUsd: 2300, horizonDays: 14,
+    expect(validateSpec({ asset: 'ETH', quantity: 1, floorTotalUsd: 2300, horizonDays: 14 })).toEqual({
+      asset: 'ETH', quantity: 1, floorTotalUsd: 2300, horizonDays: 14,
     });
+  });
+
+  it('accepts a fractional quantity with a sane implied strike (the $798-for-0.32-ETH case, corrected)', () => {
+    const spec = validateSpec({ asset: 'ETH', quantity: 0.32, floorTotalUsd: 798, horizonDays: 14 });
+    expect(spec.quantity).toBe(0.32);
+    expect(spec.floorTotalUsd).toBe(798);
   });
 });

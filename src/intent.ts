@@ -5,7 +5,10 @@
  * three fields and nothing else. Every field is strictly validated; every
  * number the user later sees comes from the live book, never from here.
  */
-import type { ProtectionSpec } from './core.js';
+// From './spec.js', NOT './core.js' — impliedStrike is used at runtime here,
+// and a value import of core.ts would pull dotenv + the Thetanuts SDK into
+// this module and into the zero-network intent tests (HANDOFF.md rule 1).
+import { impliedStrike, type ProtectionSpec } from './spec.js';
 
 export type LlmClient = (system: string, user: string) => Promise<string>;
 
@@ -35,10 +38,15 @@ export function gonkaLlm(): LlmClient {
 }
 
 const SYSTEM = `You translate a user's crypto-protection request into JSON. Output ONLY a JSON object, nothing else.
-Fields: "asset" ("ETH" or "BTC" — the asset they hold), "floorUsd" (number — the minimum USD value they need), "horizonDays" (number — how many days until their deadline).
+Fields:
+- "asset" ("ETH" or "BTC" — the asset they hold)
+- "quantity" (number — how much of the asset they hold)
+- "floorTotalUsd" (number — the total USD value they need their WHOLE holding to be worth)
+- "horizonDays" (number — how many days until their deadline)
 "two weeks" means 14. "a month" means 30. "end of next week" means about 10.
+Do NOT divide, multiply, or otherwise compute a per-unit price. Report only the numbers as stated or clearly implied — quantity and floorTotalUsd are separate, literal transcriptions, never derived from each other.
 If the text is NOT a request to protect a crypto holding's value, output {"error":"<one short sentence why>"}.
-Never invent a floor or horizon that is not stated or clearly implied by the text.`;
+Never invent a quantity, floor, or horizon that is not stated or clearly implied by the text.`;
 
 /**
  * Scan for the first complete, balanced `{...}` block in a string, tracking
@@ -93,25 +101,36 @@ function extractFirstJsonObject(text: string): string | null {
 /** Strict validation — the only gate between LLM output and the product. Pure; reused by the server. */
 export function validateSpec(obj: any): ProtectionSpec {
   if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) {
-    throw new Error(`Malformed response shape: expected a JSON object with "asset"/"floorUsd"/"horizonDays" fields, got: ${JSON.stringify(obj)}`);
+    throw new Error(`Malformed response shape: expected a JSON object with "asset"/"quantity"/"floorTotalUsd"/"horizonDays" fields, got: ${JSON.stringify(obj)}`);
   }
-  if (!('asset' in obj) && !('floorUsd' in obj) && !('horizonDays' in obj)) {
+  if (!('asset' in obj) && !('quantity' in obj) && !('floorTotalUsd' in obj) && !('horizonDays' in obj)) {
     const keys = Object.keys(obj).join(', ') || 'none';
-    throw new Error(`Malformed response shape: expected top-level "asset"/"floorUsd"/"horizonDays" fields but found none (got keys: ${keys}) — the model may have nested its answer under another key.`);
+    throw new Error(`Malformed response shape: expected top-level "asset"/"quantity"/"floorTotalUsd"/"horizonDays" fields but found none (got keys: ${keys}) — the model may have nested its answer under another key.`);
   }
   const asset = obj.asset;
-  const floorUsd = Number(obj.floorUsd);
+  const quantity = Number(obj.quantity);
+  const floorTotalUsd = Number(obj.floorTotalUsd);
   const horizonDays = Number(obj.horizonDays);
   if (asset !== 'ETH' && asset !== 'BTC') {
     throw new Error(`Unsupported asset: ${JSON.stringify(obj.asset)} — Payung protects ETH or BTC.`);
   }
-  if (!Number.isFinite(floorUsd) || floorUsd < 1 || floorUsd > 10_000_000) {
-    throw new Error(`Implausible floor price: ${JSON.stringify(obj.floorUsd)}`);
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new Error(`I need to know how much ${asset} you hold — missing or invalid quantity: ${JSON.stringify(obj.quantity)}`);
+  }
+  if (!Number.isFinite(floorTotalUsd) || floorTotalUsd < 1 || floorTotalUsd > 10_000_000_000) {
+    throw new Error(`Implausible total floor value: ${JSON.stringify(obj.floorTotalUsd)}`);
   }
   if (!Number.isFinite(horizonDays) || horizonDays < 1 || horizonDays > 90) {
     throw new Error(`Horizon must be 1-90 days, got: ${JSON.stringify(obj.horizonDays)}`);
   }
-  return { asset, floorUsd, horizonDays };
+  const spec: ProtectionSpec = { asset, quantity, floorTotalUsd, horizonDays };
+  const strike = impliedStrike(spec);
+  if (!Number.isFinite(strike) || strike < 1 || strike > 10_000_000) {
+    throw new Error(
+      `Implied per-unit strike ($${floorTotalUsd} / ${quantity} ${asset} = $${Number.isFinite(strike) ? strike.toFixed(2) : strike}) is implausible — check your quantity and total value.`
+    );
+  }
+  return spec;
 }
 
 export async function parseIntent(text: string, llm: LlmClient): Promise<ProtectionSpec> {

@@ -19,6 +19,7 @@ import {
 import { parseIntent, gonkaLlm, validateSpec } from './intent.js';
 import { judgeQuote } from './judgment.js';
 import { ensureDollarCollateral } from './aave.js';
+import { fetchHistory, fetchSpot } from './spot.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const WEB_ROOT = join(process.cwd(), 'web');
@@ -28,6 +29,10 @@ const cache = new Map<string, { candidate: Candidate; spec: ProtectionSpec; fetc
 
 /** A candidate older than this is refused rather than quoted/filled against — the live book moves. */
 const CACHE_MAX_AGE_MS = 3 * 60 * 1000;
+
+/** Price history is expensive to refetch on every render tick — 60s is fresh enough for a chart. */
+const historyCache = new Map<string, { body: any; fetchedAt: number }>();
+const HISTORY_CACHE_MS = 60 * 1000;
 
 /**
  * Marks an error as caused by bad client input (a malformed spec, a stale
@@ -314,6 +319,63 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     await ensureDollarCollateral(client, candidate.collateralToken, BigInt(Math.round(q.spendUsdc * 10 ** dec)));
     const result = await execute(candidate, q.spendUsdc, client);
     return send(res, 200, { hash: result.hash, explorer: result.explorer, paidUsd: result.paidUsd });
+  }
+
+  if (req.method === 'GET' && url === '/api/history') {
+    const params = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+    const asset = params.get('asset');
+    if (asset !== 'ETH' && asset !== 'BTC') {
+      return send(res, 400, { error: 'asset must be ETH or BTC' });
+    }
+    const days = Math.min(90, Math.max(1, Number(params.get('days') ?? 14)));
+    const key = `${asset}:${days}`;
+    const cached = historyCache.get(key);
+    if (cached && Date.now() - cached.fetchedAt < HISTORY_CACHE_MS) {
+      return send(res, 200, cached.body);
+    }
+
+    const client = readClient();
+    let spot: { price: number; updatedAt: string; feed: string } | null = null;
+    let spotError: string | null = null;
+    try {
+      const feed = client.chainConfig.priceFeeds[asset];
+      if (!feed) throw new Error(`No price feed configured for ${asset}`);
+      // client.provider and client.chainConfig are public typed fields on
+      // ThetanutsClient — no cast needed. Reading them here (rather than
+      // inside spot.ts) is what keeps spot.ts free of the SDK.
+      spot = await fetchSpot(feed, client.provider);
+    } catch (e: any) {
+      spotError = e?.shortMessage || e?.message || String(e);
+      console.error('fetchSpot failed:', spotError);
+    }
+
+    let candles: Awaited<ReturnType<typeof fetchHistory>> = [];
+    let historySource: 'coinbase-exchange' | null = null;
+    let historyError: string | null = null;
+    try {
+      candles = await fetchHistory(asset, days);
+      historySource = 'coinbase-exchange';
+    } catch (e: any) {
+      historyError = e?.message || String(e);
+      console.error('fetchHistory failed:', historyError);
+    }
+
+    const body = {
+      candles,
+      spot: spot ? { ...spot, source: 'chainlink' as const } : null,
+      historySource,
+      // Surfaced, not just logged: a chart that silently drops its headline
+      // number looks identical to one that never had it. The UI shows these
+      // (Task 9) so a degraded chart is legibly degraded, never mistaken for
+      // complete. Never a fabricated fallback price.
+      spotError,
+      historyError,
+    };
+    // Only cache a fully-successful response. Caching a degraded one pins the
+    // failure for 60s — on a flaky RPC that turns one transient into a minute
+    // of missing spot, which is exactly the wrong behavior mid-demo.
+    if (spot && historySource) historyCache.set(key, { body, fetchedAt: Date.now() });
+    return send(res, 200, body);
   }
 
   if (req.method === 'GET') return serveStatic(url, res);

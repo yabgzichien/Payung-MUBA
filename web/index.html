@@ -406,7 +406,9 @@
     <div class="step-label"><span class="step-num">2</span> Live offers pulled from the orderbook</div>
     <p class="sentence" style="margin-bottom:0">Querying <b>fetchOrders()</b> on Base, filtered to buyable puts near your strike...</p>
     <div id="candLoading" style="margin-top:14px; color:var(--dim); font-size:13px;"><span class="spinner"></span>fetching live book...</div>
+    <div class="verdict" id="candStale" style="display:none;"></div>
     <div class="candidate-list" id="candidateList" style="display:none;"></div>
+    <div class="verdict" id="candFarMiss" style="display:none;"></div>
     <div class="verdict" id="candVerdict" style="display:none;"></div>
   </div>
 
@@ -447,7 +449,7 @@
 </div>
 
 <script>
-let state = { candidates: [], selected: null, quote: null };
+let state = { candidates: [], selected: null, quote: null, candidatesSpec: null };
 let executionFailedNeedsManualClear = false;
 
 const BASE_CHAIN_ID_HEX = '0x2105'; // 8453
@@ -662,11 +664,35 @@ function restateSentence() {
     `— that's a floor of <b class="accent">$${perUnit.toLocaleString(undefined, {maximumFractionDigits: 2})} per ${asset}</b>.`;
 }
 
+let constraintChangeTimer = null;
+
+function specsMatch(a, b) {
+  return !!a && !!b && a.asset === b.asset && a.quantity === b.quantity
+    && a.floorTotalUsd === b.floorTotalUsd && a.horizonDays === b.horizonDays;
+}
+
 function onConstraintChange() {
-  restateSentence();
-  if (state.candidates.length > 0) {
-    renderCandidates(state.candidates);
-  }
+  restateSentence(); // immediate — this is the live per-unit readout, never debounced
+  if (constraintChangeTimer) clearTimeout(constraintChangeTimer);
+  constraintChangeTimer = setTimeout(() => {
+    if (!state.candidates.length) return;
+    const stale = document.getElementById('candStale');
+    if (specsMatch(state.candidatesSpec, currentSpec())) {
+      stale.style.display = 'none';
+      renderCandidates(state.candidates);
+      return;
+    }
+    // Constraint changed since these offers were fetched. Their strike
+    // distances were computed server-side against the OLD implied strike, so
+    // re-rendering would show badges measuring the wrong thing. Say so and
+    // leave the list untouched until the user re-queries the live book.
+    const old = state.candidatesSpec;
+    stale.style.display = 'block';
+    stale.innerHTML = `<b>These offers are out of date.</b> They were matched against ` +
+      `$${(old.floorTotalUsd / old.quantity).toLocaleString(undefined,{maximumFractionDigits:2})} per ${old.asset} ` +
+      `(${old.quantity} ${old.asset} · $${old.floorTotalUsd.toLocaleString()} total · ${old.horizonDays}d). ` +
+      `Click <b>Find real offers</b> again to re-query the live book for your new constraint.`;
+  }, 400);
 }
 
 ['asset','amount','floor','days'].forEach(id =>
@@ -720,6 +746,8 @@ async function findFloors() {
   try {
     const { candidates } = await api('/api/candidates', { spec: currentSpec() });
     state.candidates = candidates;
+    state.candidatesSpec = currentSpec();
+    document.getElementById('candStale').style.display = 'none';
     document.getElementById('candLoading').style.display = 'none';
     if (!candidates.length) {
       const v = document.getElementById('candVerdict');
@@ -734,10 +762,18 @@ async function findFloors() {
   }
 }
 
+/** A candidate further than this from the user's implied strike doesn't earn the "closest match" badge. */
+const CLOSEST_MATCH_MAX_PCT = 15;
+
+/** Human-readable direction for a signed distance. */
+function strikeDirection(pctVs) {
+  return pctVs >= 0 ? 'below' : 'above';
+}
+
 function renderCandidates(list) {
   const el = document.getElementById('candidateList');
+  const previouslySelectedId = state.selected?.id;
   el.innerHTML = '';
-  const heldAmount = Number(document.getElementById('amount').value) || 1;
   const asset = document.getElementById('asset').value;
   list.forEach((c, i) => {
     const div = document.createElement('div');
@@ -745,21 +781,49 @@ function renderCandidates(list) {
     div.onclick = () => selectCandidate(i, div);
     const gapBadge = c.coverageGapDays > 0.25
       ? `<span class="badge warn">ends ${c.coverageGapDays.toFixed(1)}d early</span>` : '';
-    const bestBadge = i === 0 ? '<span class="badge good">closest match</span>' : '';
-    const totalCost = (c.pricePerContract * heldAmount).toFixed(2);
+    // Gate on ABSOLUTE distance. filterCandidates ranks by absolute distance,
+    // so list[0] can sit far ABOVE the user's floor when the book has nothing
+    // near it — a strike 30% above is a real mismatch (it costs far more than
+    // asked), not a perfect one. Label with the signed value so the user can
+    // see which side of their floor it falls on.
+    const isClose = c.pctFromImpliedStrike <= CLOSEST_MATCH_MAX_PCT;
+    const bestBadge = i === 0 && isClose ? '<span class="badge good">closest match</span>' : '';
+    const farBadge = i === 0 && !isClose
+      ? `<span class="badge warn">${c.pctFromImpliedStrike.toFixed(0)}% ${strikeDirection(c.pctVsImpliedStrike)} your floor</span>`
+      : '';
     div.innerHTML = `
       <div>
-        <div class="strike">$${c.strike.toLocaleString()} floor ${bestBadge}${gapBadge}</div>
+        <div class="strike">$${c.strike.toLocaleString()} floor ${bestBadge}${farBadge}${gapBadge}</div>
         <div class="meta">${c.daysToExpiry.toFixed(1)}d window · exp ${c.expiryIso.slice(0,10)} · put, buyable · iv ${c.iv ? c.iv.toFixed(2) : '—'}</div>
       </div>
       <div class="premium">
-        <div class="amount">$${totalCost} USDC</div>
-        <div class="label">total cost for ${heldAmount} ${asset} ($${c.pricePerContract.toFixed(2)}/ea)</div>
+        <div class="amount">$${c.pricePerContract.toFixed(2)}/${asset}</div>
+        <div class="label">confirmed cost shown after you pick</div>
       </div>
     `;
     el.appendChild(div);
   });
-  selectCandidate(0, el.children[0]);
+
+  // The far-miss warning goes in its OWN element. selectCandidate (called at
+  // the end of this function) overwrites #candVerdict with a spinner and then
+  // the quote verdict, so anything written there would be gone in milliseconds.
+  const farMiss = document.getElementById('candFarMiss');
+  if (!list.length) { farMiss.style.display = 'none'; return; }
+  const nearest = list[0];
+  if (nearest.pctFromImpliedStrike > CLOSEST_MATCH_MAX_PCT) {
+    farMiss.style.display = 'block';
+    farMiss.innerHTML = `<b>Nothing on the live book is close to your stated floor.</b> ` +
+      `Your $${nearest.impliedStrike.toLocaleString(undefined,{maximumFractionDigits:2})} per-${asset} floor's ` +
+      `nearest match is $${nearest.strike.toLocaleString()} — ${nearest.pctFromImpliedStrike.toFixed(0)}% ` +
+      `${strikeDirection(nearest.pctVsImpliedStrike)} what you asked for. Payung shows it rather than hiding it, ` +
+      `but this is not a good match. Try a floor closer to spot.`;
+  } else {
+    farMiss.style.display = 'none';
+  }
+
+  const restoreIndex = previouslySelectedId ? list.findIndex(c => c.id === previouslySelectedId) : -1;
+  const indexToSelect = restoreIndex >= 0 ? restoreIndex : 0;
+  selectCandidate(indexToSelect, el.children[indexToSelect]);
 }
 
 async function selectCandidate(i, el) {
@@ -1279,7 +1343,7 @@ function rearmExecute() {
 }
 
 function resetFlow() {
-  state = { candidates: [], selected: null, quote: null };
+  state = { candidates: [], selected: null, quote: null, candidatesSpec: null };
   executionFailedNeedsManualClear = false;
   const btn = document.getElementById('execBtn');
   btn.disabled = false;
@@ -1291,6 +1355,10 @@ function resetFlow() {
   document.getElementById('simBtn').textContent = 'Simulate fill (free)';
   document.getElementById('simResult').innerHTML = '';
   document.getElementById('txResult').innerHTML = '';
+  const stale = document.getElementById('candStale');
+  if (stale) stale.style.display = 'none';
+  const farMiss = document.getElementById('candFarMiss');
+  if (farMiss) farMiss.style.display = 'none';
   setStep(1);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }

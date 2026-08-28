@@ -1,21 +1,18 @@
 {
   "version": 2,
-  "rewrites": [
+  "builds": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api"
-    },
+      "src": "src/server.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["web/**"]
+      }
+    }
+  ],
+  "routes": [
     {
-      "source": "/ethers.min.js",
-      "destination": "/web/ethers.min.js"
-    },
-    {
-      "source": "/",
-      "destination": "/web/index.html"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/web/$1"
+      "src": "/(.*)",
+      "dest": "src/server.ts"
     }
   ]
 }

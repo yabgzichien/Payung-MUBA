@@ -128,13 +128,20 @@ const MIME: Record<string, string> = {
 
 async function serveStatic(url: string, res: ServerResponse) {
   if (url === '/ethers.min.js' || url === '/ethers.js') {
-    const ethersFile = join(process.cwd(), 'node_modules/ethers/dist/ethers.umd.min.js');
+    const localEthers = join(WEB_ROOT, 'ethers.min.js');
     try {
-      const data = await readFile(ethersFile);
+      const data = await readFile(localEthers);
       res.writeHead(200, { 'content-type': 'text/javascript' });
       return res.end(data);
     } catch {
-      return send(res, 404, { error: 'ethers bundle not found' });
+      const ethersFile = join(process.cwd(), 'node_modules/ethers/dist/ethers.umd.min.js');
+      try {
+        const data = await readFile(ethersFile);
+        res.writeHead(200, { 'content-type': 'text/javascript' });
+        return res.end(data);
+      } catch {
+        return send(res, 404, { error: 'ethers bundle not found' });
+      }
     }
   }
 
@@ -385,17 +392,24 @@ export async function route(req: IncomingMessage, res: ServerResponse) {
     return send(res, 200, body);
   }
 
-  if (req.method === 'GET') return serveStatic(url, res);
+  if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(url, res);
   return send(res, 404, { error: 'not found' });
+}
+
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  try {
+    await route(req, res);
+  } catch (e: any) {
+    send(res, e instanceof ClientError ? 400 : 500, { error: e?.shortMessage || e?.message || String(e) });
+  }
 }
 
 // Only start listening when run directly (so tests can import the pure helpers).
 if (process.argv[1] && process.argv[1].endsWith('server.ts')) {
   createServer((req, res) => {
-    route(req, res).catch((e: any) =>
-      send(res, e instanceof ClientError ? 400 : 500, { error: e?.shortMessage || e?.message || String(e) })
-    );
+    handler(req, res);
   }).listen(PORT, '127.0.0.1', () => {
     console.log(`Payung running at http://localhost:${PORT} — BASE MAINNET, real orders.`);
   });
 }
+

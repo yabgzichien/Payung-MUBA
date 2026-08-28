@@ -172,6 +172,7 @@
     transition: border-color 0.15s ease, background 0.15s ease;
   }
   .candidate:hover { border-color: #3a4256; }
+  .candidate:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .candidate.selected { border-color: var(--accent); background: rgba(79,209,165,0.06); }
   .candidate .strike { font-size: 16px; font-weight: 600; }
   .candidate .meta { font-size: 12px; color: var(--dim); margin-top: 2px; }
@@ -307,7 +308,7 @@
   .balance-indicator.sufficient { color: var(--accent); }
   .balance-indicator.short { color: var(--warn); }
 
-  .mock-banner {
+  .live-banner {
     font-family: var(--mono);
     font-size: 11px;
     text-align: center;
@@ -364,7 +365,7 @@
     </div>
   </header>
 
-  <div class="mock-banner">
+  <div class="live-banner">
     LIVE — every candidate below is a real, currently-fillable order on Base mainnet, priced by the protocol's own math.
   </div>
 
@@ -764,7 +765,8 @@ async function findFloors() {
     renderCandidates(candidates);
     document.getElementById('candidateList').style.display = 'flex';
   } catch (e) {
-    document.getElementById('candLoading').textContent = 'Error: ' + e.message;
+    const loadingEl = document.getElementById('candLoading');
+    loadingEl.innerHTML = `Error: ${e.message} <button class="btn secondary" style="margin-left:10px; padding:4px 10px; font-size:12px;" onclick="findFloors()">Retry</button>`;
   }
 }
 
@@ -784,7 +786,12 @@ function renderCandidates(list) {
   list.forEach((c, i) => {
     const div = document.createElement('div');
     div.className = 'candidate';
+    div.setAttribute('role', 'button');
+    div.setAttribute('tabindex', '0');
     div.onclick = () => selectCandidate(i, div);
+    div.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectCandidate(i, div); }
+    };
     const gapBadge = c.coverageGapDays > 0.25
       ? `<span class="badge warn">ends ${c.coverageGapDays.toFixed(1)}d early</span>` : '';
     // Gate on ABSOLUTE distance. filterCandidates ranks by absolute distance,

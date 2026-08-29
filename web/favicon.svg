@@ -1,30 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
-  <defs>
-    <linearGradient id="favPayungGrad" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#fbd38d"/>
-      <stop offset="60%" stop-color="#d9822b"/>
-      <stop offset="100%" stop-color="#b76316"/>
-    </linearGradient>
-    <linearGradient id="favCanopyGlow" x1="16" y1="6" x2="16" y2="18" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#fbd38d" stop-opacity="0.3"/>
-      <stop offset="100%" stop-color="#d9822b" stop-opacity="0.08"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Background rounded squircle for tab contrast -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
   <rect width="32" height="32" rx="7" fill="#1f1c16" stroke="#3d3424" stroke-width="1"/>
-
-  <!-- Umbrella Top Tip -->
-  <path d="M16 4V6.5" stroke="url(#favPayungGrad)" stroke-width="2" stroke-linecap="round"/>
-
-  <!-- Umbrella Canopy -->
-  <path d="M5.5 16.5C5.5 10.7 10.2 6.5 16 6.5C21.8 6.5 26.5 10.7 26.5 16.5C25.1 15.3 22.5 15.3 21.2 16.5C19.9 15.3 17.3 15.3 16 16.5C14.7 15.3 12.1 15.3 10.8 16.5C9.5 15.3 6.9 15.3 5.5 16.5Z" 
-        fill="url(#favCanopyGlow)" stroke="url(#favPayungGrad)" stroke-width="1.8" stroke-linejoin="round"/>
-
-  <!-- Canopy Ribs -->
-  <path d="M16 6.5C13.8 9.5 11.8 13.2 10.8 16.5" stroke="url(#favPayungGrad)" stroke-width="1.1" stroke-linecap="round" opacity="0.65"/>
-  <path d="M16 6.5C18.2 9.5 20.2 13.2 21.2 16.5" stroke="url(#favPayungGrad)" stroke-width="1.1" stroke-linecap="round" opacity="0.65"/>
-
-  <!-- Shaft and J-hook Handle -->
-  <path d="M16 16.5V23.5C16 25.157 14.657 26.5 13 26.5C11.343 26.5 10 25.157 10 23.5" stroke="url(#favPayungGrad)" stroke-width="1.8" stroke-linecap="round"/>
+  <text x="16" y="23.5" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="#fbd38d" text-anchor="middle">☂</text>
 </svg>

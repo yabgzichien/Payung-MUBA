@@ -26,6 +26,7 @@ build/
 *.log
 .DS_Store
 .tsbuildinfo
+next-env.d.ts
 
 # Tooling and IDE scratch
 .worktrees/

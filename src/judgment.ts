@@ -6,7 +6,7 @@
  * one. Deliberately NOT an LLM call: judgment over real numbers should be
  * deterministic and auditable. (Thresholds are the 5-10% rule from PROJECT.md.)
  */
-import type { Quote } from './core.js';
+import type { Quote } from './core';
 
 export type Judgment = {
   /** Premium as a percentage of the floor value it protects (per contract). */

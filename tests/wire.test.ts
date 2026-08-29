@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { candidateId, toWire, jsonSafe } from '../src/server.js';
+import { candidateId, toWire, jsonSafe } from '../src/api-shared.js';
 import { makeCandidate } from './fixtures.js';
 
 const spec = { asset: 'ETH' as const, quantity: 1, floorTotalUsd: 2300, horizonDays: 14 };

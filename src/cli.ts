@@ -22,10 +22,10 @@ import {
   readClient, writeClient, getBook, findCandidates, quote,
   simulate, execute, payoffCurve, USDC_DECIMALS, coverageGapDays,
   collateralDecimals, dollarTokens, tokenSymbol, impliedStrike,
-} from './core.js';
-import { judgeQuote } from './judgment.js';
-import { ensureDollarCollateral } from './aave.js';
-import { parseIntent, gonkaLlm } from './intent.js';
+} from './core';
+import { judgeQuote } from './judgment';
+import { ensureDollarCollateral } from './aave';
+import { parseIntent, gonkaLlm } from './intent';
 
 const [cmd, ...args] = process.argv.slice(2);
 const usd = (n: number) => `$${n.toFixed(2)}`;

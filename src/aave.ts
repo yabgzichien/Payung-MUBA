@@ -9,7 +9,7 @@
  */
 import { ethers } from 'ethers';
 import { ThetanutsClient, STRATEGY_VAULT_CONFIG } from '@thetanuts-finance/thetanuts-client';
-import { readClient, signerFromEnv, tokenSymbol } from './core.js';
+import { readClient, signerFromEnv, tokenSymbol } from './core';
 
 const AAVE_POOL_ABI = [
   'function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)',

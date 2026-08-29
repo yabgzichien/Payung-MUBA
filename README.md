@@ -63,7 +63,7 @@ wallet setup.
 ## Architecture
 
 One core (`src/core.ts`) is the only module that touches Thetanuts. The CLI (`src/cli.ts`),
-the HTTP API (`src/server.ts`), and the web UI (`web/`) are thin faces over it.
+the HTTP API (`app/api/*/route.ts`), and the web UI (`app/`) are thin faces over it.
 Spec: [Payung_Spec.md](Payung_Spec.md) · Pitch & Q&A: [PROJECT.md](PROJECT.md)
 
 ## After the hackathon

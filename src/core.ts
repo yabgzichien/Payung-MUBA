@@ -14,7 +14,7 @@
 import 'dotenv/config';
 import { ethers } from 'ethers';
 import { ThetanutsClient } from '@thetanuts-finance/thetanuts-client';
-import { impliedStrike, type ProtectionSpec } from './spec.js';
+import { impliedStrike, type ProtectionSpec } from './spec';
 
 export const BASE_CHAIN_ID = 8453;
 export const USDC_DECIMALS = 6;
@@ -134,8 +134,8 @@ export async function getBook(client = readClient()): Promise<Candidate[]> {
   );
 }
 
-export type { ProtectionSpec } from './spec.js';
-export { impliedStrike } from './spec.js';
+export type { ProtectionSpec } from './spec';
+export { impliedStrike } from './spec';
 
 export type FilterConfig = {
   /** Lowercase collateral-token addresses treated as dollar-denominated (USDC, aBasUSDC). */

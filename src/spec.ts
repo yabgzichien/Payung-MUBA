@@ -30,3 +30,13 @@ export type ProtectionSpec = {
 export function impliedStrike(spec: ProtectionSpec): number {
   return spec.floorTotalUsd / spec.quantity;
 }
+
+/**
+ * The inverse of impliedStrike: a total holding value from a per-unit price.
+ * Exists so a sentence stating a market/per-unit price (e.g. "BTC not below
+ * $62,000") can be converted to floorTotalUsd in tested code — the NL parser
+ * is forbidden from doing this multiplication itself (see intent.ts).
+ */
+export function totalFromUnit(unitFloorUsd: number, quantity: number): number {
+  return unitFloorUsd * quantity;
+}

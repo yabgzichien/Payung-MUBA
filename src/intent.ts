@@ -11,7 +11,7 @@
 // From './spec.js', NOT './core.js' — impliedStrike is used at runtime here,
 // and a value import of core.ts would pull dotenv + the Thetanuts SDK into
 // this module and into the zero-network intent tests (HANDOFF.md rule 1).
-import { impliedStrike, type ProtectionSpec } from './spec.js';
+import { impliedStrike, totalFromUnit, type ProtectionSpec } from './spec';
 
 export type LlmClient = (system: string, user: string) => Promise<string>;
 
@@ -50,6 +50,40 @@ Fields:
 Do NOT divide, multiply, or otherwise compute a per-unit price. Report only the numbers as stated or clearly implied — quantity and floorTotalUsd are separate, literal transcriptions, never derived from each other.
 If the text is NOT a request to protect a crypto holding's value, output {"error":"<one short sentence why>"}.
 Never invent a quantity, floor, or horizon that is not stated or clearly implied by the text.`;
+
+/**
+ * Nullable-field variant of SYSTEM, for the web UI's incremental sentence box
+ * (parsePartialIntent below). Unlike SYSTEM, an unstated field is reported as
+ * null rather than forcing the whole request to fail — see classifyPartialSpec.
+ * Also adds floorMode so a per-unit market price (e.g. "BTC not below
+ * $62,000") isn't misread as a total holding value: the model only TAGS which
+ * one the sentence means, never computes between them (totalFromUnit/
+ * impliedStrike do that in tested code).
+ */
+const SYSTEM_PARTIAL = `You translate a user's crypto-protection request into JSON. Output ONLY a JSON object, nothing else.
+Fields — use null for any field the text does not state or clearly imply. Never guess or invent a value:
+- "asset" (the symbol they hold, exactly as named, e.g. "ETH", "BTC", or any other ticker they mention — or null)
+- "quantity" (number — how much of the asset they hold — or null)
+- "floorValue" (number — the price they mention — or null)
+- "floorMode" ("perUnit" if floorValue is the price of ONE unit of the asset — e.g. "the BTC price", "per ETH", "market price of $X", "not fall below $X" with no "total" wording — or "total" if floorValue is the value of their WHOLE holding — e.g. "worth $X total", "my holding worth $X". null if floorValue is null.)
+- "horizonDays" (number — how many days until their deadline — or null)
+"two weeks" means 14. "a month" means 30. "end of next week" means about 10.
+Do NOT divide, multiply, or otherwise compute floorValue from quantity or vice versa — report only the number as stated.
+Only output {"error":"<one short sentence why>"} when the text is not about protecting a crypto holding's value AT ALL (e.g. an unrelated question or a joke). If it IS a protection request but names an asset other than ETH/BTC, still fill in every other field normally — do NOT use the error field just because the asset is unsupported.`;
+
+export type FieldKey = 'asset' | 'quantity' | 'floor' | 'horizonDays';
+
+export type PartialSpecResult = {
+  asset: 'ETH' | 'BTC' | null;
+  quantity: number | null;
+  unitFloorUsd: number | null;
+  floorTotalUsd: number | null;
+  horizonDays: number | null;
+  /** Fields the sentence never mentioned — highlight, don't error. */
+  missingFields: FieldKey[];
+  /** Fields the sentence stated but with a bad value — show next to that field only. */
+  fieldErrors: Partial<Record<FieldKey, string>>;
+};
 
 /**
  * Scan for the first complete, balanced `{...}` block in a string, tracking
@@ -148,4 +182,95 @@ export async function parseIntent(text: string, llm: LlmClient): Promise<Protect
   }
   if (obj.error) throw new Error(`Not a protection request: ${obj.error}`);
   return validateSpec(obj);
+}
+
+/**
+ * Per-field classification for the web UI's sentence box: unlike validateSpec,
+ * an unstated field goes to missingFields (highlight and let the user fill it
+ * in) rather than failing the whole parse. A field that WAS stated but is bad
+ * goes to fieldErrors instead, so the two cases stay visibly different in the
+ * form (see intent.test.ts for the field-level cases this covers).
+ */
+export function classifyPartialSpec(obj: any): PartialSpecResult {
+  const missingFields: FieldKey[] = [];
+  const fieldErrors: Partial<Record<FieldKey, string>> = {};
+
+  let asset: 'ETH' | 'BTC' | null = null;
+  if (obj.asset == null) {
+    missingFields.push('asset');
+  } else if (obj.asset !== 'ETH' && obj.asset !== 'BTC') {
+    fieldErrors.asset = `Unsupported asset: ${JSON.stringify(obj.asset)} — Payung protects ETH or BTC.`;
+  } else {
+    asset = obj.asset;
+  }
+
+  let quantity: number | null = null;
+  if (obj.quantity == null) {
+    missingFields.push('quantity');
+  } else {
+    const q = Number(obj.quantity);
+    if (!Number.isFinite(q) || q <= 0) {
+      fieldErrors.quantity = `Quantity must be a positive number, got: ${JSON.stringify(obj.quantity)}`;
+    } else {
+      quantity = q;
+    }
+  }
+
+  let unitFloorUsd: number | null = null;
+  let floorTotalUsd: number | null = null;
+  if (obj.floorValue == null) {
+    missingFields.push('floor');
+  } else {
+    const v = Number(obj.floorValue);
+    if (!Number.isFinite(v) || v <= 0) {
+      fieldErrors.floor = `Floor value must be a positive number, got: ${JSON.stringify(obj.floorValue)}`;
+    } else if (obj.floorMode === 'perUnit') {
+      unitFloorUsd = v;
+      if (quantity != null) floorTotalUsd = totalFromUnit(v, quantity);
+    } else if (obj.floorMode === 'total') {
+      floorTotalUsd = v;
+      if (quantity != null) unitFloorUsd = v / quantity;
+    } else {
+      fieldErrors.floor = `Could not tell if $${v} is a per-unit price or a total holding value — try stating "per BTC/ETH" or "total" explicitly.`;
+    }
+  }
+
+  let horizonDays: number | null = null;
+  if (obj.horizonDays == null) {
+    missingFields.push('horizonDays');
+  } else {
+    const h = Number(obj.horizonDays);
+    if (!Number.isFinite(h) || h < 1 || h > 90) {
+      fieldErrors.horizonDays = `Horizon must be 1-90 days, got: ${JSON.stringify(obj.horizonDays)}`;
+    } else {
+      horizonDays = h;
+    }
+  }
+
+  // Plausibility of the implied per-unit strike can only be checked once both
+  // sides of the division are known and the floor didn't already fail above.
+  if (!fieldErrors.floor && quantity != null && floorTotalUsd != null) {
+    const strike = impliedStrike({ asset: asset ?? 'ETH', quantity, floorTotalUsd, horizonDays: horizonDays ?? 1 });
+    if (!Number.isFinite(strike) || strike < 1 || strike > 10_000_000) {
+      fieldErrors.floor = `Implied per-unit strike ($${floorTotalUsd} / ${quantity} = $${strike.toFixed(2)}) is implausible — check your quantity and floor value.`;
+      unitFloorUsd = null;
+      floorTotalUsd = null;
+    }
+  }
+
+  return { asset, quantity, unitFloorUsd, floorTotalUsd, horizonDays, missingFields, fieldErrors };
+}
+
+export async function parsePartialIntent(text: string, llm: LlmClient): Promise<PartialSpecResult> {
+  const out = await llm(SYSTEM_PARTIAL, text);
+  const candidate = extractFirstJsonObject(out);
+  if (!candidate) throw new Error('Could not parse intent: the model returned no JSON.');
+  let obj: any;
+  try {
+    obj = JSON.parse(candidate);
+  } catch {
+    throw new Error('Could not parse intent: the model returned invalid JSON.');
+  }
+  if (obj.error) throw new Error(`Not a protection request: ${obj.error}`);
+  return classifyPartialSpec(obj);
 }

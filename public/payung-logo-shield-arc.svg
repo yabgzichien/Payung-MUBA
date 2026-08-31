@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="p1h-title p1h-desc"
+     viewBox="0 0 240 64" width="240" height="64">
+  <title id="p1h-title">Payung</title>
+  <desc id="p1h-desc">Payung logo — a golden arc over a floor line, with the Payung wordmark</desc>
+  <defs>
+    <style>
+      .bg   { fill: #141210; }
+      .arc  { fill: none; stroke: url(#g1); stroke-width: 3; stroke-linecap: round; }
+      .floor{ fill: none; stroke: #e8a020; stroke-width: 1.5; stroke-linecap: round; opacity: 0.7; }
+      .dot  { fill: #fcd882; }
+      .handle { fill: none; stroke: #e8a020; stroke-width: 1.8; stroke-linecap: round; }
+      .wm   { fill: #fcd882; font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+               font-weight: 700; font-size: 22px; letter-spacing: -0.5px; }
+      .tag  { fill: #7a6038; font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+               font-weight: 400; font-size: 8.5px; letter-spacing: 2.8px; }
+      .div  { stroke: #2e2a22; stroke-width: 1; }
+    </style>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#fcd882"/>
+      <stop offset="100%" stop-color="#e8a020"/>
+    </linearGradient>
+    <filter id="glow1">
+      <feGaussianBlur stdDeviation="2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="240" height="64" rx="12" class="bg"/>
+  <g filter="url(#glow1)">
+    <path class="arc" d="M 12 44 Q 36 12 60 44"/>
+    <line class="floor" x1="10" y1="44" x2="62" y2="44"/>
+    <line class="handle" x1="36" y1="44" x2="36" y2="55"/>
+    <path class="handle" d="M 36 55 Q 36 60 31 60 Q 27 60 27 55.5"/>
+    <circle class="dot" cx="36" cy="12" r="2.2"/>
+    <circle class="dot" cx="10" cy="44" r="1.5" opacity="0.6"/>
+    <circle class="dot" cx="62" cy="44" r="1.5" opacity="0.6"/>
+  </g>
+  <line class="div" x1="76" y1="14" x2="76" y2="50"/>
+  <text class="wm" x="88" y="37">Payung</text>
+  <text class="tag" x="90" y="52">PROTECT · BEFORE · IT · RAINS</text>
+</svg>

@@ -132,14 +132,17 @@ async function ensureBaseNetwork(provider = getInjectedProvider()) {
 async function refreshWalletBalances() {
   if (!walletState.provider || !walletState.address) return;
   try {
-    const rawEth = await walletState.provider.getBalance(walletState.address);
+    // Reads via readProvider(), not the wallet's RPC -- this is the exact call
+    // that was failing with "missing revert data" on canonical USDC.
+    const provider = readProvider();
+    const rawEth = await provider.getBalance(walletState.address);
     walletState.ethBalance = (Number(rawEth) / 1e18).toFixed(4);
 
-    const usdcContract = new ethers.Contract('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', ERC20_ABI, walletState.provider);
+    const usdcContract = new ethers.Contract('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', ERC20_ABI, provider);
     const rawUsdc = await usdcContract.balanceOf(walletState.address);
     walletState.usdcBalance = (Number(rawUsdc) / 1e6).toFixed(2);
 
-    const aBasUsdcContract = new ethers.Contract('0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB', ERC20_ABI, walletState.provider);
+    const aBasUsdcContract = new ethers.Contract('0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB', ERC20_ABI, provider);
     const rawABas = await aBasUsdcContract.balanceOf(walletState.address);
     walletState.aBasUsdcBalance = (Number(rawABas) / 1e6).toFixed(2);
   } catch (err) {
@@ -154,6 +157,12 @@ function updateWalletUI() {
   const balEl = document.getElementById('walletBalances');
   const collatBalEl = document.getElementById('walletCollatBalances');
   const collatPill = document.getElementById('collatPill');
+  const historyLink = document.getElementById('historyLink');
+
+  // app.js loads on every page (see app/layout.tsx), but only the main
+  // workspace markup has these elements — e.g. /history doesn't. Bail rather
+  // than throw on null so auto-connect doesn't break other pages.
+  if (!btn || !pill) return;
 
   const neededUsd = state.quote?.quote?.spendUsdc || 0;
 
@@ -163,7 +172,11 @@ function updateWalletUI() {
     const short = walletState.address.slice(0, 6) + '…' + walletState.address.slice(-4);
     addrEl.textContent = short;
     balEl.textContent = `$${walletState.usdcBalance} USDC · ${walletState.ethBalance} ETH`;
-    
+    if (historyLink) {
+      historyLink.style.display = 'inline-flex';
+      historyLink.href = '/history?address=' + walletState.address;
+    }
+
     collatBalEl.textContent = `wallet: $${walletState.usdcBalance} USDC · $${walletState.aBasUsdcBalance} aBasUSDC · needed: ${formatMoney(neededUsd)}`;
     
     const isAaveToken = state.selected?.collateralToken?.toLowerCase() === '0x4e65fe4dba92790696d040ac24aa414708f5c0ab'.toLowerCase();
@@ -188,6 +201,7 @@ function updateWalletUI() {
   } else {
     btn.style.display = 'inline-block';
     pill.style.display = 'none';
+    if (historyLink) historyLink.style.display = 'none';
     collatBalEl.textContent = `wallet: not connected · needed: ${formatMoney(neededUsd)}`;
   }
 }
@@ -290,7 +304,11 @@ function pickExample(sentence, asset, qty, unitFloor, days) {
   findFloors();
 }
 
-document.getElementById('sentenceInput').addEventListener('keydown', (e) => {
+// app.js loads on every page (see app/layout.tsx) but these elements only
+// exist on the main workspace markup -- e.g. /history doesn't have them.
+// Optional chaining so a missing element skips wiring instead of throwing
+// and halting the rest of this script's top-level setup on other pages.
+document.getElementById('sentenceInput')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     parseNL();
@@ -460,11 +478,11 @@ function currentSpec() {
   };
 }
 
-document.getElementById('asset').addEventListener('change', onAssetChange);
-document.getElementById('amount').addEventListener('input', onAmountChange);
-document.getElementById('unitFloor').addEventListener('input', syncFloorFromUnit);
-document.getElementById('floor').addEventListener('input', syncFloorFromTotal);
-document.getElementById('days').addEventListener('input', () => { clearFieldFlag('horizonDays'); onConstraintChange(); });
+document.getElementById('asset')?.addEventListener('change', onAssetChange);
+document.getElementById('amount')?.addEventListener('input', onAmountChange);
+document.getElementById('unitFloor')?.addEventListener('input', syncFloorFromUnit);
+document.getElementById('floor')?.addEventListener('input', syncFloorFromTotal);
+document.getElementById('days')?.addEventListener('input', () => { clearFieldFlag('horizonDays'); onConstraintChange(); });
 
 // ── Live Candidates & Selection ───────────────────────────────────────────────
 
@@ -532,7 +550,7 @@ function renderCandidates() {
   document.getElementById('heroStrike').textContent = formatMoney(selected.strike, 0);
   document.getElementById('heroBadge').textContent = badgeText;
   document.getElementById('heroBadge').className = badgeClass;
-  document.getElementById('heroDetails').textContent = `${selected.daysToExpiry.toFixed(1)}d window · expires ${selected.expiryIso.slice(0,10)} · maker budget ${formatMoney(selected.makerBudget, 0)}`;
+  document.getElementById('heroDetails').textContent = `${selected.daysToExpiry.toFixed(1)}d window · expires ${selected.expiryIso.slice(0,10)} · maximum fill ${formatMoney(selected.makerBudget, 0)}`;
   document.getElementById('heroPremium').textContent = `${formatMoney(selected.pricePerContract)} / ${asset}`;
 
   // Far Miss Warning
@@ -601,7 +619,7 @@ function renderCandidates() {
           <span class="cand-col-val" style="color:var(--text-bright);">${formatMoney(c.pricePerContract)} / ${asset}</span>
         </div>
         <div class="cand-col" style="text-align:right;">
-          <span class="cand-col-label">IV · BUDGET</span>
+          <span class="cand-col-label">IV · MAX FILL</span>
           <span class="cand-col-val" style="font-size:12.5px; color:oklch(0.76 0.01 80);">${c.iv ? c.iv.toFixed(2) : ''} · ${formatMoney(c.makerBudget, 0)}</span>
         </div>
       `;
@@ -681,7 +699,7 @@ async function quoteSelectedCandidate() {
       (sel.daysToExpiry >= statedDays
         ? `${(sel.daysToExpiry - statedDays).toFixed(1)} day(s) after your stated horizon. The extra days are covered at no additional cost.`
         : `<b>${gapDays.toFixed(1)} day(s) before</b> your stated ${statedDays}-day horizon  you are unprotected for that gap, and Payung will not paper over it.`) +
-      ` Maker budget caps this fill at ${formatMoney(sel.makerBudget, 0)} of collateral.`;
+      ` Maximum fill on this offer is ${formatMoney(sel.makerBudget, 0)} of collateral.`;
 
     // Update Step 4 (collateral status + simulate/confirm)
     setStep(4);
@@ -704,6 +722,118 @@ async function quoteSelectedCandidate() {
 function onConfirmCheckChange() {
   state.confirmed = document.getElementById('confirmCheck').checked;
   updateExecButtonState();
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Dedicated read-only provider for balance/allowance/simulation calls.
+ *
+ * The injected wallet's provider is NOT reliable for reads: it routes through
+ * whatever RPC the extension picked, which intermittently answers eth_call
+ * with empty data. ethers surfaces that as `CALL_EXCEPTION: missing revert
+ * data` -- indistinguishable from a real revert, even though balanceOf() on
+ * canonical USDC cannot revert. Reads go here; the wallet signer is used ONLY
+ * to send transactions, which is the one thing it must do.
+ */
+let _readProvider = null;
+function readProvider() {
+  if (!_readProvider) _readProvider = new ethers.JsonRpcProvider('https://mainnet.base.org');
+  return _readProvider;
+}
+
+/** Retry a read that failed transiently, so one bad RPC answer doesn't abort the whole execute flow. */
+async function readWithRetry(fn, label, attempts = 3) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) await sleep(500 * (i + 1));
+    }
+  }
+  const detail = lastErr?.shortMessage || lastErr?.message || String(lastErr);
+  throw new Error(`Could not read ${label} from Base after ${attempts} tries (${detail}). This is an RPC hiccup, not a problem with your funds — try again.`);
+}
+
+/**
+ * An injected wallet's own `tx.wait()` can hang forever even after the
+ * transaction is actually mined -- the extension's block-polling sometimes
+ * just stops (seen live: a supply() call sat "confirming" for 12+ minutes
+ * after it had already succeeded on-chain). Race it against a plain
+ * read-only Base RPC, which has no dependency on the wallet's own polling,
+ * and fall back to that if the wallet goes quiet.
+ */
+async function waitForReceipt(txResponse, { walletTimeoutMs = 12_000, fallbackTimeoutMs = 180_000, pollMs = 3_000 } = {}) {
+  const walletWait = txResponse.wait().then((receipt) => ({ via: 'wallet', receipt }));
+  const timedOut = sleep(walletTimeoutMs).then(() => ({ via: 'timeout' }));
+  const first = await Promise.race([walletWait, timedOut]);
+  if (first.via === 'wallet') return first.receipt;
+
+  const deadline = Date.now() + fallbackTimeoutMs;
+  while (Date.now() < deadline) {
+    const receipt = await readProvider().getTransactionReceipt(txResponse.hash).catch(() => null);
+    if (receipt) {
+      if (receipt.status === 0) throw new Error(`Transaction ${txResponse.hash} reverted on-chain.`);
+      return receipt;
+    }
+    await sleep(pollMs);
+  }
+  throw new Error(
+    `Still waiting on confirmation after ${Math.round(fallbackTimeoutMs / 1000)}s. ` +
+    `Check https://basescan.org/tx/${txResponse.hash} — it may just need more time.`
+  );
+}
+
+/**
+ * Send a transaction through the wallet, but estimate gas on OUR provider.
+ *
+ * Wallets estimate gas via their own RPC before signing. That RPC is the same
+ * unreliable one that returns empty eth_call data, and when it does, ethers
+ * reports `missing revert data` — which reads like the transaction is broken
+ * when it is actually fine. Estimating here first means:
+ *   - if our estimate fails, the transaction really would revert, and we can
+ *     say why instead of sending;
+ *   - if it succeeds, we pass an explicit gasLimit so the wallet has nothing
+ *     left to estimate and its flaky RPC cannot veto a valid transaction.
+ */
+async function sendTx(txReq, label) {
+  let gasLimit;
+  try {
+    const est = await readProvider().estimateGas({ ...txReq, from: walletState.address });
+    gasLimit = (est * 125n) / 100n; // headroom; unused gas is refunded
+  } catch (e) {
+    throw new Error(
+      `${label} would revert on-chain, so it was not sent: ${e?.shortMessage || e?.message || e}. No funds moved.`
+    );
+  }
+  try {
+    return await walletState.signer.sendTransaction({ ...txReq, gasLimit });
+  } catch (e) {
+    const msg = e?.shortMessage || e?.message || String(e);
+    if (e?.code === 'ACTION_REJECTED' || /user rejected|denied/i.test(msg)) {
+      throw new Error(`${label} was rejected in your wallet. Nothing was sent.`);
+    }
+    if (/missing revert data|CALL_EXCEPTION|could not coalesce/i.test(msg)) {
+      throw new Error(
+        `${label}: your wallet's RPC returned no data (${msg}). We independently verified this ` +
+        `transaction is valid and estimated its gas, so this is a wallet RPC hiccup rather than a ` +
+        `problem with the order. Nothing was sent — try again.`
+      );
+    }
+    throw e;
+  }
+}
+
+/** Brief, visible "this step just confirmed" flash in the exec button, instead of it silently staying on the spinner text. */
+async function flashButtonSuccess(btn, text) {
+  btn.innerHTML = `✓ ${text}`;
+  btn.classList.add('btn-exec-flash-success');
+  await sleep(900);
+  btn.classList.remove('btn-exec-flash-success');
 }
 
 function updateExecButtonState() {
@@ -954,8 +1084,110 @@ function updateProvenanceTable(data) {
 
 // ── Execution & Simulation ────────────────────────────────────────────────────
 
+/**
+ * The OptionBook underflows (Panic 0x11) when the taker holds less collateral
+ * token than `contracts x strike`, rather than reverting with a readable
+ * reason. Check that ourselves first so the user gets a real explanation
+ * instead of "Panic due to OVERFLOW(17)".
+ */
+async function assertEnoughCollateralHeld(prep, fromAddress) {
+  if (!prep.requiredCollateralUnits) return;
+  const required = BigInt(prep.requiredCollateralUnits);
+  const dec = prep.collateralDecimals || 6;
+  const fmt = (v) => '$' + (Number(v) / 10 ** dec).toFixed(6);
+  const token = new ethers.Contract(prep.collateralToken, ERC20_ABI, readProvider());
+
+  const held = await readWithRetry(() => token.balanceOf(fromAddress), 'your collateral balance');
+  if (held < required) {
+    throw new Error(
+      `Not enough collateral held. This fill is ${prep.contracts?.toFixed(6)} contract(s) at a ` +
+      `$${prep.quote?.strike?.toLocaleString()} strike, so the OptionBook requires you to HOLD ` +
+      `${fmt(required)} of collateral — you hold ${fmt(held)}. Only the ${fmt(prep.collateralUnits)} ` +
+      `premium is actually spent, but the balance must be there. Reduce the amount, or top up.`
+    );
+  }
+
+  // Allowance must ALSO cover the collateral, not the premium -- otherwise the
+  // book reverts ERC20InsufficientAllowance(needed = contracts x strike).
+  const allowed = await readWithRetry(
+    () => token.allowance(fromAddress, prep.optionBookAddress), 'your collateral allowance');
+  if (allowed < required) {
+    throw new Error(
+      `Collateral approval too small. The OptionBook needs an allowance of ${fmt(required)} ` +
+      `(contracts x strike) but only ${fmt(allowed)} is approved. Click Execute again to approve ` +
+      `the correct amount — no funds have moved.`
+    );
+  }
+}
+
+/**
+ * Get a FRESH order after an Aave top-up.
+ *
+ * Maker orders on this book live ~96s, and prepare-tx refuses anything with
+ * under 60s left -- so an order is fillable only in its first ~36 seconds.
+ * A top-up costs two wallet confirmations plus two blocks, which always
+ * outlasts that. Reusing the original prep here would guarantee an "Order
+ * expired" revert, so re-quote instead.
+ *
+ * If the replacement's terms differ from what the user approved, ask rather
+ * than silently filling different terms.
+ */
+async function reprepareAfterTopUp(oldPrep, spendUsdc) {
+  const { candidates } = await api('/api/candidates', { spec: currentSpec() });
+  if (!candidates || !candidates.length) {
+    throw new Error(
+      'Your collateral top-up succeeded, but the order book no longer lists a matching offer. ' +
+      'Your funds are safe as aBasUSDC — click Execute again to pick a fresh offer.'
+    );
+  }
+  const wantStrike = oldPrep.quote?.strike;
+  const wantExpiry = oldPrep.quote?.expiryIso;
+  const pick =
+    candidates.find((c) => c.strike === wantStrike && c.expiryIso === wantExpiry) ||
+    candidates.find((c) => c.strike === wantStrike) ||
+    candidates[0];
+
+  if (pick.strike !== wantStrike || pick.expiryIso !== wantExpiry) {
+    const ok = window.confirm(
+      `The offer you reviewed expired while the collateral was being supplied ` +
+      `(offers on this book refresh about every 90 seconds).\n\n` +
+      `Closest available now:\n` +
+      `  strike  $${pick.strike.toLocaleString()}  (was $${wantStrike?.toLocaleString()})\n` +
+      `  expiry  ${String(pick.expiryIso).slice(0, 10)}  (was ${String(wantExpiry).slice(0, 10)})\n\n` +
+      `Place the order on these terms?`
+    );
+    if (!ok) {
+      throw new Error(
+        'Cancelled — the option was not bought. Your collateral remains yours as aBasUSDC.'
+      );
+    }
+  }
+
+  state.selected = pick;
+  return api('/api/prepare-tx', {
+    id: pick.id,
+    spendUsdc,
+    takerAddress: walletState.address,
+  });
+}
+
 async function checkFillWouldSucceed(prep, fromAddress) {
-  await walletState.provider.call({ to: prep.fillTx.to, data: prep.fillTx.data, from: fromAddress });
+  // Read-only eth_call against our own RPC. A genuine revert still throws
+  // here (that is the point of the check) -- but an empty answer from the
+  // wallet's flaky RPC no longer masquerades as one.
+  try {
+    await readProvider().call({ to: prep.fillTx.to, data: prep.fillTx.data, from: fromAddress });
+  } catch (e) {
+    const msg = e?.shortMessage || e?.message || String(e);
+    // Translate the book's opaque underflow into the actual cause.
+    if (/OVERFLOW|panic|0x11/i.test(msg)) {
+      throw new Error(
+        `${msg} — this is the OptionBook underflowing because the collateral held is below ` +
+        `contracts x strike. Nothing was sent and no funds moved.`
+      );
+    }
+    throw e;
+  }
 }
 
 async function runSimulate() {
@@ -1037,80 +1269,197 @@ async function runExecute() {
 
   try {
     btn.innerHTML = '<span class="spinner"></span>Preparing transaction...';
-    const prep = await api('/api/prepare-tx', {
+    // `let`: if a collateral top-up runs, the order it references expires
+    // during that top-up and must be replaced. See reprepareAfterTopUp().
+    let prep = await api('/api/prepare-tx', {
       id: state.selected.id,
       spendUsdc: q.spendUsdc,
       takerAddress: walletState.address,
     });
 
-    const requiredUnits = BigInt(prep.collateralUnits);
+    // Two DIFFERENT amounts, and conflating them is what made earlier runs fail:
+    //   premiumUnits - what is actually SPENT (transferred to the maker).
+    //   holdUnits    - what must be HELD in the collateral token for the fill
+    //                  not to underflow (contracts x strike). Far larger.
+    // The Aave top-up must target holdUnits; the OptionBook allowance only
+    // ever needs premiumUnits, since that is all that moves.
+    // Set by any step that lands a transaction before the fill. Those steps
+    // burn more than the ~96s an offer lives, so the prep must be refreshed.
+    let sentPreparatoryTx = false;
+    const premiumUnits = BigInt(prep.collateralUnits);
+    const holdUnits = prep.requiredCollateralUnits ? BigInt(prep.requiredCollateralUnits) : premiumUnits;
+    const dec = prep.collateralDecimals || 6;
+    const usd = (v) => '$' + (Number(v) / 10 ** dec).toFixed(6);
 
     // 1. Supply to Aave if required
     if (prep.aavePlan) {
-      const aBasContract = new ethers.Contract(prep.aavePlan.aBasUsdcAddress, ERC20_ABI, walletState.signer);
-      const currentABas = await aBasContract.balanceOf(walletState.address);
+      // Reads go through readProvider(), never the wallet's own RPC -- see readProvider().
+      const aBasContract = new ethers.Contract(prep.aavePlan.aBasUsdcAddress, ERC20_ABI, readProvider());
+      const currentABas = await readWithRetry(
+        () => aBasContract.balanceOf(walletState.address), 'your aBasUSDC balance');
 
-      if (currentABas < requiredUnits) {
-        const shortfall = requiredUnits - currentABas;
-        const usdcContract = new ethers.Contract(prep.aavePlan.rawUsdcAddress, ERC20_ABI, walletState.signer);
-        const usdcBal = await usdcContract.balanceOf(walletState.address);
+      if (currentABas < holdUnits) {
+        const rawShortfall = holdUnits - currentABas;
+        // aBasUSDC is an Aave aToken whose balance is derived from a scaled
+        // amount times a liquidity index, so supplying exactly N can credit
+        // N-1 units after rounding -- which would leave the balance a hair
+        // under the requirement and fail right after a successful top-up.
+        // Add a 0.1% cushion (min 2 units); it stays the user's money.
+        const cushion = rawShortfall / 1000n > 2n ? rawShortfall / 1000n : 2n;
+        const usdcContract = new ethers.Contract(prep.aavePlan.rawUsdcAddress, ERC20_ABI, readProvider());
+        const usdcBal = await readWithRetry(
+          () => usdcContract.balanceOf(walletState.address), 'your USDC balance');
 
-        if (usdcBal < shortfall) {
-          throw new Error(`Insufficient USDC balance. You need $${(Number(shortfall)/1e6).toFixed(2)} USDC to supply to Aave.`);
+        // Gate on the TRUE need, not the cushioned figure, so a wallet that
+        // can just barely cover the fill is never turned away over the cushion.
+        // Then supply the cushioned amount, capped by what they actually hold.
+        if (usdcBal < rawShortfall) {
+          // Say what they CAN afford rather than only what they can't.
+          const affordableHold = Number(currentABas + usdcBal) / 10 ** dec;
+          const maxContracts = affordableHold / prep.quote.strike;
+          throw new Error(
+            `Not enough USDC to cover the collateral this fill requires.\n\n` +
+            `This fill is ${prep.contracts?.toFixed(6)} contract(s) at a $${prep.quote.strike.toLocaleString()} strike, ` +
+            `so you must HOLD ${usd(holdUnits)} of aBasUSDC (only the ${usd(premiumUnits)} premium is spent).\n\n` +
+            `You hold ${usd(currentABas)} aBasUSDC + ${usd(usdcBal)} USDC = $${affordableHold.toFixed(6)} total, ` +
+            `which supports at most ~${maxContracts.toFixed(6)} contract(s).\n\n` +
+            `Lower the protected amount and try again.`
+          );
         }
 
-        const aaveAllowance = await usdcContract.allowance(walletState.address, prep.aavePlan.aavePoolAddress);
+        const shortfall = rawShortfall + cushion <= usdcBal ? rawShortfall + cushion : usdcBal;
+
+        // ASK before converting: this moves real USDC into Aave. It stays the
+        // user's money (aBasUSDC is redeemable 1:1 and accrues interest), but
+        // it is still their decision, not ours to assume.
+        const ok = window.confirm(
+          `Additional collateral needed\n\n` +
+          `This fill is ${prep.contracts?.toFixed(6)} contract(s) at a $${prep.quote.strike.toLocaleString()} strike.\n` +
+          `The OptionBook requires you to HOLD ${usd(holdUnits)} of aBasUSDC.\n` +
+          `You currently hold ${usd(currentABas)}.\n\n` +
+          `Convert ${usd(shortfall)} of your USDC into aBasUSDC now?\n\n` +
+          `• Only the ${usd(premiumUnits)} premium is actually spent on the option.\n` +
+          `• The rest stays yours as aBasUSDC (redeemable 1:1, earns Aave interest).\n` +
+          `• You have ${usd(usdcBal)} USDC available.`
+        );
+        if (!ok) {
+          throw new Error('Cancelled — no collateral was converted and no funds moved.');
+        }
+
+        // Encode approve/supply for the SHORTFALL, not the full collateral
+        // amount. The server pre-encodes these for the full requirement
+        // because it cannot know your aBasUSDC balance at prepare time; using
+        // those blobs verbatim re-supplies the entire amount and ignores what
+        // you already hold, converting more USDC than the fill needs.
+        const erc20Iface = new ethers.Interface(ERC20_ABI);
+        const aaveIface = new ethers.Interface([
+          'function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)',
+        ]);
+
+        const aaveAllowance = await readWithRetry(
+          () => usdcContract.allowance(walletState.address, prep.aavePlan.aavePoolAddress),
+          'your USDC allowance for Aave');
         if (aaveAllowance < shortfall) {
           btn.innerHTML = '<span class="spinner"></span>Approve USDC for Aave in wallet...';
-          const appTx = await walletState.signer.sendTransaction({
-            to: prep.aavePlan.approveAaveTx.to,
-            data: prep.aavePlan.approveAaveTx.data,
-          });
+          const appTx = await sendTx({
+            to: prep.aavePlan.rawUsdcAddress,
+            data: erc20Iface.encodeFunctionData('approve', [prep.aavePlan.aavePoolAddress, shortfall]),
+          }, 'USDC approval for Aave');
           btn.innerHTML = '<span class="spinner"></span>Confirming Aave approval...';
-          await appTx.wait();
+          await waitForReceipt(appTx);
+          await flashButtonSuccess(btn, 'Aave approval confirmed');
         }
 
         btn.innerHTML = '<span class="spinner"></span>Supply USDC to Aave in wallet...';
-        const supTx = await walletState.signer.sendTransaction({
-          to: prep.aavePlan.supplyTx.to,
-          data: prep.aavePlan.supplyTx.data,
-        });
+        const supTx = await sendTx({
+          to: prep.aavePlan.aavePoolAddress,
+          data: aaveIface.encodeFunctionData('supply', [
+            prep.aavePlan.rawUsdcAddress,
+            shortfall,
+            walletState.address,
+            0,
+          ]),
+        }, 'Aave supply');
         btn.innerHTML = '<span class="spinner"></span>Confirming Aave supply...';
-        await supTx.wait();
+        await waitForReceipt(supTx);
+        await flashButtonSuccess(btn, 'Collateral topped up');
+
+        // The offer this prep was built against is stale after two
+        // confirmations. Step 2b re-quotes once for all preparatory steps.
+        sentPreparatoryTx = true;
       }
     }
 
     // 2. OptionBook Allowance Approval
-    const collateralContract = new ethers.Contract(prep.collateralToken, ERC20_ABI, walletState.signer);
-    const currentAllowance = await collateralContract.allowance(walletState.address, prep.optionBookAddress);
+    const collateralContract = new ethers.Contract(prep.collateralToken, ERC20_ABI, readProvider());
+    const currentAllowance = await readWithRetry(
+      () => collateralContract.allowance(walletState.address, prep.optionBookAddress),
+      'your collateral allowance for the OptionBook');
 
-    if (currentAllowance < requiredUnits) {
+    // holdUnits, NOT premiumUnits. An earlier version approved only the premium
+    // on the reasoning that the premium is all that moves -- the chain says
+    // otherwise: the book reverts ERC20InsufficientAllowance with
+    // `needed = contracts x strike`. Allowance must cover the collateral.
+    if (currentAllowance < holdUnits) {
       btn.innerHTML = '<span class="spinner"></span>Approve collateral for OptionBook...';
-      const appTx = await walletState.signer.sendTransaction({
+      const appTx = await sendTx({
         to: prep.approveOptionBookTx.to,
         data: prep.approveOptionBookTx.data,
-      });
+      }, 'Collateral approval for the OptionBook');
       btn.innerHTML = '<span class="spinner"></span>Confirming OptionBook approval...';
-      await appTx.wait();
+      await waitForReceipt(appTx);
+      await flashButtonSuccess(btn, 'Collateral approved');
+      sentPreparatoryTx = true;
     }
 
-    // 3. Pre-flight verification
+    // 2b. Any preparatory transaction (top-up or approval) costs a wallet
+    // confirmation plus block time, and maker orders only live ~96s. An order
+    // prepared before those steps is reliably dead by now -- that is the
+    // "Order expired" revert, which costs real gas because the transaction
+    // does reach the chain. Re-quote so the fill targets a LIVE order.
+    if (sentPreparatoryTx) {
+      btn.innerHTML = '<span class="spinner"></span>Getting a fresh offer...';
+      prep = await reprepareAfterTopUp(prep, q.spendUsdc);
+      const freshHold = prep.requiredCollateralUnits ? BigInt(prep.requiredCollateralUnits) : BigInt(prep.collateralUnits);
+      const freshAllowance = await readWithRetry(
+        () => new ethers.Contract(prep.collateralToken, ERC20_ABI, readProvider())
+          .allowance(walletState.address, prep.optionBookAddress),
+        'your collateral allowance for the OptionBook');
+      // Approve again only if the replacement genuinely needs more. Skipping
+      // this would just reproduce the allowance revert on the new order.
+      if (freshAllowance < freshHold) {
+        btn.innerHTML = '<span class="spinner"></span>Approve collateral for the new offer...';
+        const a2 = await sendTx({
+          to: prep.approveOptionBookTx.to,
+          data: prep.approveOptionBookTx.data,
+        }, 'Collateral approval for the replacement offer');
+        await waitForReceipt(a2);
+        await flashButtonSuccess(btn, 'Collateral approved');
+        // That approval burned time too -- one more refresh, then fill fast.
+        prep = await reprepareAfterTopUp(prep, q.spendUsdc);
+      }
+    }
+
+    // 3. Pre-flight verification. Balance-held check first: it is the common
+    // failure and explains itself, whereas the eth_call only says "Panic".
     btn.innerHTML = '<span class="spinner"></span>Verifying fill safety...';
+    await assertEnoughCollateralHeld(prep, walletState.address);
     try {
       await checkFillWouldSucceed(prep, walletState.address);
     } catch (simErr) {
       throw new Error(`Fill pre-flight check failed: ${simErr.shortMessage || simErr.message}`);
     }
 
-    // 4. Execute FillOrder
-    btn.innerHTML = '<span class="spinner"></span>Confirm fillOrder in wallet...';
-    const fillTx = await walletState.signer.sendTransaction({
+    // 4. Execute FillOrder — confirm PROMPTLY. The offer this targets expires
+    // ~96s after the book published it, and the wallet dialog is on that clock.
+    btn.innerHTML = '<span class="spinner"></span>Confirm fillOrder in wallet (offer expires ~60s)...';
+    const fillTx = await sendTx({
       to: prep.fillTx.to,
       data: prep.fillTx.data,
-    });
+    }, 'The fillOrder transaction');
 
     btn.innerHTML = '<span class="spinner"></span>Waiting for block confirmation...';
-    const receipt = await fillTx.wait();
+    const receipt = await waitForReceipt(fillTx);
 
     // 5. Read debits from on-chain logs
     const paidUnits = sumDebitsFromReceipt(receipt, prep.collateralToken, walletState.address);
@@ -1120,8 +1469,16 @@ async function runExecute() {
     setStep(4);
     updateExecButtonState();
 
+    // Report the order that was ACTUALLY filled. After a collateral top-up the
+    // original offer expires and `prep` holds a replacement, so `q` (the quote
+    // the user first reviewed) can describe different terms than what settled.
+    const filled = {
+      contracts: prep.contracts ?? q.contracts,
+      strike: prep.quote?.strike ?? q.strike,
+      expiryIso: prep.quote?.expiryIso ?? q.expiryIso,
+    };
     document.getElementById('receiptLine').textContent =
-      `You bought ${q.contracts.toFixed(4)} put contract(s) at a ${formatMoney(q.strike, 0)} strike expiring ${q.expiryIso.slice(0,10)} for ${formatMoney(paidUsd)}, verified from Transfer event logs on Base mainnet.`;
+      `You bought ${filled.contracts.toFixed(4)} put contract(s) at a ${formatMoney(filled.strike, 0)} strike expiring ${filled.expiryIso.slice(0,10)} for ${formatMoney(paidUsd)}, verified from Transfer event logs on Base mainnet.`;
     document.getElementById('receiptTxHash').textContent = receipt.hash;
     document.getElementById('receiptExplorerLink').href = `https://basescan.org/tx/${receipt.hash}`;
     document.getElementById('receiptBox').style.display = 'block';
@@ -1259,16 +1616,14 @@ function initSidebarResizer() {
   });
 }
 
-// Initial Run
-//
-// This script is loaded via next/script strategy="afterInteractive", which
-// runs after React hydration — by which point document.readyState is no
-// longer 'loading' and DOMContentLoaded has already fired. Listening for it
-// here would never fire. Run immediately if the DOM is already ready, and
-// only fall back to the event for the (non-Next) case where it isn't yet.
 function initApp() {
+  const sentenceInput = document.getElementById('sentenceInput');
+  // app.js loads on every page (see app/layout.tsx), but only the main
+  // workspace markup has these elements — e.g. /history doesn't. Bail rather
+  // than throw on null so page load does not break on other pages.
+  if (!sentenceInput) return;
   initSidebarResizer();
-  document.getElementById('sentenceInput').value = 'I need my ETH worth at least $2,300 in two weeks';
+  sentenceInput.value = 'I need my ETH worth at least $2,300 in two weeks';
   restateSentence();
   setStep(1);
   drawUnifiedChart();

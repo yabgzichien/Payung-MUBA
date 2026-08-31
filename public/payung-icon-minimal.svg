@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Payung"
+     viewBox="0 0 40 40" width="40" height="40">
+  <rect width="40" height="40" rx="9" fill="#111"/>
+  <g stroke="#fcd882" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2">
+    <path d="M 7 24 Q 20 8 33 24"/>
+    <line x1="20" y1="24" x2="20" y2="32"/>
+    <path d="M 20 32 Q 20 36 16.5 36 Q 13 36 13 32.5"/>
+  </g>
+</svg>

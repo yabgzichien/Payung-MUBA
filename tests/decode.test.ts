@@ -8,7 +8,8 @@ function rawOrder(over: any = {}) {
   return {
     order: {
       expiry: String(NOW + 14 * 86400),
-      isBuyer: false,
+      // isBuyer:true is the side where the TAKER buys (owes premium only).
+      isBuyer: true,
       strikePrice: '230000000000', // 1e8 scale -> $2300
       price: '1994000000',         // scale 1e8 -> $19.94
       collateralToken: ABAS_USDC,
@@ -27,7 +28,7 @@ describe('decodeOrder', () => {
     expect(c.strike).toBe(2300);
     expect(c.pricePerContract).toBeCloseTo(19.94);
     expect(c.daysToExpiry).toBeCloseTo(14);
-    expect(c.makerIsBuyer).toBe(false);
+    expect(c.takerIsBuyer).toBe(true);
     expect(c.yourSide).toBe('you buy the option');
     expect(c.makerBudget).toBe(5000);
   });
@@ -43,8 +44,8 @@ describe('decodeOrder', () => {
     expect(c.priceFeed).toBe(FEED_ETH); // fixture is already lowercase
   });
 
-  it('marks maker-is-buyer orders as you-sell', () => {
-    const c = decodeOrder(rawOrder({ order: { isBuyer: true } }), 1e8, NOW, 6);
+  it('marks isBuyer:false orders as you-sell (taker would write the put)', () => {
+    const c = decodeOrder(rawOrder({ order: { isBuyer: false } }), 1e8, NOW, 6);
     expect(c.yourSide).toBe('you sell the option');
   });
 });

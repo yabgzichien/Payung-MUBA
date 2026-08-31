@@ -26,12 +26,25 @@ describe('filterCandidates', () => {
     expect(filterCandidates(book, spec, cfg)).toHaveLength(0);
   });
 
-  it('rejects calls and maker-is-buyer orders', () => {
+  it('rejects calls and write-the-put orders', () => {
     const book = [
       makeCandidate({ isCall: true }),
-      makeCandidate({ makerIsBuyer: true, yourSide: 'you sell the option' }),
+      // takerIsBuyer:false means WE would be writing the put and posting
+      // contracts x strike as collateral. Never a protection purchase.
+      makeCandidate({ takerIsBuyer: false, yourSide: 'you sell the option' }),
     ];
     expect(filterCandidates(book, spec, cfg)).toHaveLength(0);
+  });
+
+  it('keeps ONLY the side where the taker buys (regression: filter was inverted)', () => {
+    const book = [
+      makeCandidate({ takerIsBuyer: true, yourSide: 'you buy the option' }),
+      makeCandidate({ takerIsBuyer: false, yourSide: 'you sell the option' }),
+    ];
+    const out = filterCandidates(book, spec, cfg);
+    expect(out).toHaveLength(1);
+    expect(out[0].takerIsBuyer).toBe(true);
+    expect(out[0].yourSide).toBe('you buy the option');
   });
 
   it('keeps the 0.6x-2.5x horizon window and ranks by strike distance', () => {

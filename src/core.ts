@@ -49,8 +49,22 @@ export function writeClient() {
 export type Candidate = {
   raw: any;
   isCall: boolean;
-  /** True if the MAKER is the buyer — which means YOU, the taker, are the seller. */
-  makerIsBuyer: boolean;
+  /**
+   * True if YOU (the taker) are the buyer on this order.
+   *
+   * Named for what the chain actually does, which is the OPPOSITE of what the
+   * field name `order.isBuyer` suggests. Verified on Base mainnet from a
+   * non-maker wallet holding $4.02:
+   *   isBuyer=true  -> fill reaches the ERC20 transfer even when contracts x
+   *                    strike is $19,721, i.e. no collateral is demanded.
+   *                    Taker pays only the premium => taker is the BUYER.
+   *   isBuyer=false -> Panic(0x11) collateral-short at every size, including
+   *                    dust. Taker must post contracts x strike => taker is
+   *                    the SELLER (writing the put).
+   * Corroborated by a real settled purchase (tx 0x2570c9dd…): sellerWasMaker,
+   * and the taker transferred only the $9.999955 premium.
+   */
+  takerIsBuyer: boolean;
   /** Plain-English side, computed once so the UI never has to reason about it. */
   yourSide: 'you buy the option' | 'you sell the option';
   strike: number;
@@ -98,13 +112,15 @@ export async function collateralDecimals(client: ThetanutsClient, token: string)
 /** Pure decode of one raw SDK order. Exported for tests — no network, no Date.now(). */
 export function decodeOrder(o: any, scale: number, nowSec: number, collateralDec: number): Candidate {
   const expirySec = Number(o.order.expiry);
-  const makerIsBuyer = Boolean(o.order.isBuyer);
+  const takerIsBuyer = Boolean(o.order.isBuyer);
   return {
     raw: o,
     isCall: Boolean(o.rawApiData?.isCall),
-    makerIsBuyer,
-    // If the maker is buying, you are on the other side: you sell.
-    yourSide: makerIsBuyer ? 'you sell the option' : 'you buy the option',
+    takerIsBuyer,
+    // See takerIsBuyer above: isBuyer=true is the side where the taker pays
+    // only the premium, i.e. the side that BUYS. Reading it the other way
+    // labelled write-the-put orders as "you buy the option".
+    yourSide: takerIsBuyer ? 'you buy the option' : 'you sell the option',
     strike: Number(o.order.strikePrice) / 10 ** STRIKE_DECIMALS,
     expiry: new Date(expirySec * 1000),
     daysToExpiry: (expirySec - nowSec) / 86400,
@@ -163,9 +179,12 @@ export function filterCandidates(
       // A floor under a long asset position is a PUT — the correct instrument,
       // not a judgement call or a prediction.
       .filter((c) => !c.isCall)
-      // CRITICAL: to BUY protection you need a maker who is SELLING. Only ~20%
-      // of the book qualifies. Without this you'd be writing naked puts.
-      .filter((c) => !c.makerIsBuyer)
+      // CRITICAL: to BUY protection you must be the buyer. This predicate was
+      // previously inverted (`!c.makerIsBuyer`), which kept precisely the
+      // orders where the taker WRITES the put — the naked-put case this line
+      // exists to prevent. It also explained the collateral demand users hit:
+      // sellers must post contracts x strike, buyers owe only the premium.
+      .filter((c) => c.takerIsBuyer)
       // CRITICAL: protection must be on the asset the user actually holds.
       // The book is multi-asset; strike distance is NOT a proxy for underlying.
       .filter((c) => c.priceFeed === cfg.assetPriceFeed)

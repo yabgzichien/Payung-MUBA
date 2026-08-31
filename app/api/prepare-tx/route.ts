@@ -18,6 +18,25 @@ export async function POST(req: Request) {
     const collateralUnits = BigInt(Math.round(q.spendUsdc * 10 ** dec));
     const usdcUnits = BigInt(Math.round(q.spendUsdc * 10 ** USDC_DECIMALS));
 
+    /**
+     * What the taker must hold and approve — and it depends entirely on which
+     * SIDE the taker is on:
+     *
+     *   BUYER  (takerIsBuyer): owes the premium and nothing else. Confirmed
+     *     on-chain — a buy-side fill needing $0.143529 of `contracts x strike`
+     *     reported `needed` of only $0.000483 against a $0.001 premium.
+     *   SELLER: must post `contracts x strike` as cash collateral, because a
+     *     written put has to guarantee its payout. Short of it, the book
+     *     reverts Panic(0x11) on balance or ERC20InsufficientAllowance on
+     *     approval, with `needed` matching that product exactly.
+     *
+     * Charging every fill the seller's number (the previous behaviour) demanded
+     * ~100x the premium from buyers and blocked them for no reason.
+     */
+    const requiredCollateralUnits = candidate.takerIsBuyer
+      ? collateralUnits
+      : BigInt(Math.ceil(q.contracts * candidate.strike * 10 ** dec));
+
     assertFillable(candidate, Math.floor(Date.now() / 1000));
 
     const optionBookAddress = client.getContractAddress('optionBook');
@@ -25,7 +44,7 @@ export async function POST(req: Request) {
     const approveOptionBookTx = client.erc20.encodeApprove(
       candidate.collateralToken,
       optionBookAddress,
-      collateralUnits
+      requiredCollateralUnits
     );
 
     const isAaveToken = candidate.collateralToken.toLowerCase() === '0x4e65fe4dba92790696d040ac24aa414708f5c0ab'.toLowerCase();
@@ -75,6 +94,9 @@ export async function POST(req: Request) {
       collateralToken: candidate.collateralToken,
       collateralDecimals: dec,
       collateralUnits: collateralUnits.toString(),
+      /** What the taker must HOLD (not spend) for the fill to not underflow. See above. */
+      requiredCollateralUnits: requiredCollateralUnits.toString(),
+      contracts: q.contracts,
       optionBookAddress,
       approveOptionBookTx,
       fillTx,

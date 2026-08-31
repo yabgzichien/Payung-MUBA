@@ -84,7 +84,7 @@ async function main() {
       // uses, not the raw book — otherwise this can pick a WETH/cbBTC-collateralized
       // order and crash into planDeposit's generic "no auto-deposit path" reason.
       const dollarSet = await dollarTokens(client, book);
-      const target = book.find((c) => !c.isCall && !c.makerIsBuyer && dollarSet.has(c.collateralToken.toLowerCase()));
+      const target = book.find((c) => !c.isCall && c.takerIsBuyer && dollarSet.has(c.collateralToken.toLowerCase()));
       if (!target) { console.log('No buyable, dollar-collateralized puts on the book to read a collateral token from.'); return; }
       const dec = await collateralDecimals(client, target.collateralToken);
       const units = BigInt(Math.round(amountUsdc * 10 ** dec));

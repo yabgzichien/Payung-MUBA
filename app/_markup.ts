@@ -10,6 +10,7 @@ export const BODY_HTML = `
       <span class="pulse-dot"></span>
       <span class="net-text">BASE MAINNET · 8453</span>
     </div>
+    <a id="historyLink" class="history-link" href="/history" style="display:none;" title="Protection & transaction history">📜 History</a>
     <div class="wallet-box" id="walletBox">
       <button class="wallet-btn" id="connectWalletBtn" onclick="connectWallet()">🦊 Connect Wallet</button>
       <div id="walletPill" class="wallet-pill" style="display:none;">
@@ -127,7 +128,7 @@ export const BODY_HTML = `
                   <span style="font-size: 15px; color: oklch(0.80 0.02 80);">floor</span>
                   <span class="badge-chip" id="heroBadge">CLOSEST MATCH · +0.0%</span>
                 </div>
-                <span class="hero-details" id="heroDetails">14.0d window · expires Mar 14, 2026 · maker budget $4,120</span>
+                <span class="hero-details" id="heroDetails">14.0d window · expires Mar 14, 2026 · maximum fill $4,120</span>
               </div>
               <div class="hero-right">
                 <span class="hero-premium" id="heroPremium">$10.42 / ETH</span>
@@ -346,7 +347,7 @@ export const BODY_HTML = `
         </div>
         <div class="provenance-row">
           <div class="cand-col">
-            <span style="font-size: 13px; color: oklch(0.88 0.01 82);">Maker budget</span>
+            <span style="font-size: 13px; color: oklch(0.88 0.01 82);">Maximum fill</span>
             <span class="prov-source">OptionBook order · availableAmount</span>
           </div>
           <span class="prov-val" id="provBudgetVal">$4,120</span>

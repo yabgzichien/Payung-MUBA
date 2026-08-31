@@ -11,7 +11,9 @@ export function makeCandidate(over: Partial<Candidate> = {}): Candidate {
   return {
     raw: { signature: '0xs1gdefault0000000000' },
     isCall: false,
-    makerIsBuyer: false,
+    // takerIsBuyer: true is the buy-protection side (taker owes only the
+    // premium). See the field docs in src/core.ts.
+    takerIsBuyer: true,
     yourSide: 'you buy the option',
     strike: 2300,
     expiry: new Date('2026-09-10T08:00:00Z'),

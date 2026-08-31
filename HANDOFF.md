@@ -9,7 +9,7 @@ This file is written for an AI agent (or human) picking up this project cold. It
 **Payung** ("umbrella" in Malay) is an options-protection product built on the Thetanuts SDK, running live on **Base mainnet** (chainId 8453). A user states a plain-language constraint — "I need my ETH worth at least $2,300 in two weeks" — and the system:
 
 1. Parses that sentence into `{asset, quantity, floorTotalUsd, horizonDays}` via an LLM (Gonka Router) — **the LLM's only job, ever**.
-2. Queries the live Thetanuts orderbook, filters to currently-fillable put options that actually match (correct underlying, correct side, dollar-denominated collateral, roughly the right window) and ranks them by distance to derived `impliedStrike(spec)`.
+2. Queries the live Thetanuts orderbook, filters to currently-fillable put options that actually match (correct underlying, **correct side — the user always BUYS, never writes**, dollar-denominated collateral, roughly the right window) and ranks them by distance to derived `impliedStrike(spec)`.
 3. Prices the best match using the protocol's own math (never invented numbers).
 4. Shows a unified price chart (Coinbase candlesticks, live Chainlink spot, strike floor, and expiry protection timeline) and a deterministic (non-LLM) judgment: is this premium worth it?
 5. Simulates the exact transaction for free (`callStaticFillOrder`).
@@ -57,7 +57,7 @@ src/
   spot.ts       — Coinbase candle history + Chainlink spot for the chart. Must never import the
                   Thetanuts SDK, not even as a type; takes (feed, provider) as plain arguments.
   core.ts       — THE ONLY MODULE THAT TOUCHES THETANUTS. Everything else is a thin face over this.
-  aave.ts       — USDC → aBasUSDC deposit helper (buyable puts settle in aBasUSDC, not raw USDC)
+  aave.ts       — USDC → aBasUSDC deposit helper (buyable puts quote in aBasUSDC, so the PREMIUM is paid in it; never for collateral — buyers post none)
   intent.ts     — NL → ProtectionSpec via Gonka Router. Strictly validates the LLM's 4-field output.
   judgment.ts   — Deterministic (NOT LLM) premium-vs-value verdict + coverage-gap honesty
   server.ts     — Thin node:http JSON API over core.ts/spot.ts, plus static serving of web/
@@ -120,7 +120,7 @@ Owns price history normalization and live spot pricing for the unified chart:
 Read this file first for any protocol interaction. Key exports:
 - `readClient()` / `writeClient()` — read-only vs. signing SDK clients.
 - `Candidate` (type) — decoded live order from `fetchOrders()`.
-- `filterCandidates(book, spec, cfg)` — pure filtering: puts only, maker is seller (buyer protection), asset match, dollar collateral, 0.6x–2.5x horizon window, ranked by absolute distance to `impliedStrike(spec)`.
+- `filterCandidates(book, spec, cfg)` — pure filtering: puts only, **`takerIsBuyer` (you buy the put)**, asset match, dollar collateral, 0.6x–2.5x horizon window, ranked by absolute distance to `impliedStrike(spec)`. The side predicate is load-bearing and was previously inverted — see [Buying protection needs NO collateral](#buying-protection-needs-no-collateral--previously-inverted-side-bug).
 - `capSpend(requestedUsdc, makerBudget, strike, price)` — caps requested size to what the maker's collateral budget can absorb.
 - `simulate(candidate, collateralUsdc, client?)` — free dry run via `callStaticFillOrder`.
 - `execute(candidate, spendUsdc, client?)` — fill order: simulates first, approves exact amount (never MaxUint256), fills, and reads actual debit from Transfer logs.
@@ -178,7 +178,60 @@ npm run web               # http://localhost:8787 — the full product
 
 ---
 
+## Buying protection needs NO collateral — previously-inverted side bug
+
+**Read this before touching order selection, the Aave path, or anything that asks the user for collateral.**
+
+### The rule
+
+Buying a put costs **the premium and nothing else**. If the app ever demands that the user hold or approve `contracts × strike`, that is a **bug**, not a protocol requirement — it means the app has put the user on the **selling** side.
+
+| Side | What you owe | Why |
+|---|---|---|
+| **Buyer** (what this product does) | premium only | you are paying for the right to sell at the strike |
+| **Seller** (never intended here) | `contracts × strike` cash collateral | a written put must guarantee its payout |
+
+### What was wrong
+
+`filterCandidates` selected `!makerIsBuyer`, which kept exactly the orders where **the taker writes the put**. The comment above that line warned "without this you'd be writing naked puts" — the intent was right, the polarity was backwards. `yourSide` was inverted to match, so the UI cheerfully labelled write-the-put orders **"you buy the option"**.
+
+The SDK's `order.isBuyer` field means the **opposite** of what its name suggests. Verified on Base mainnet from a non-maker wallet holding $4.02:
+
+- `isBuyer === true` → a fill needing **$19,721** of `contracts × strike` still reaches the ERC20 **transfer** step. No collateral is demanded. **Taker is the BUYER.**
+- `isBuyer === false` → `Panic(0x11)` collateral-short at **every** size, including dust. **Taker is the SELLER.**
+
+Corroborated by a real settled purchase (tx `0x2570c9dd…`): `sellerWasMaker`, and the taker transferred only the $9.999955 premium.
+
+The field is therefore decoded as **`takerIsBuyer`** in `src/core.ts`, named for what the chain actually does. `tests/filter.test.ts` has a regression test pinning the correct side — **do not "simplify" it away.**
+
+### How the failure presented
+
+Because collateral was demanded from a user who should have owed only a premium, the symptoms were confusing and easy to misdiagnose:
+
+- `Panic due to OVERFLOW(17)` — the book subtracts without a balance guard, so "you are short collateral" surfaces as an opaque arithmetic panic with **no readable reason at all**.
+- `ERC20InsufficientAllowance(spender, allowance, needed)` — once the balance was sufficient but the approval wasn't. `needed` equals `contracts × strike` **exactly**; that is how the formula was confirmed.
+
+Both are downstream symptoms. If either reappears, **check the side first** — do not treat them as collateral-sizing problems and do not "fix" them by asking the user for more money.
+
+### Consequence — one real position was written
+
+Before the fix landed, a live fill made the burner wallet the **seller** (tx [`0x3e7417c5…`](https://basescan.org/tx/0x3e7417c5c676109e737f540debe95d0aec9477c9797c19f37e626d0c611cff04), `buyer = 0xEcda1D00…`, `seller = 0x22955CE0…`). It received $0.008272 premium and locked **$1.150000 aBasUSDC** as collateral: ETH **$2,300 strike, expires 2026-09-11**, 0.0005 contracts. Max loss is bounded at the $1.15 posted. It is unaffected by the fix and simply runs to expiry.
+
+### Does the Aave / aBasUSDC path still matter?
+
+Partly, and it is worth revisiting. The Aave `supply` helper exists because the *buyable* puts on the live book quote in `aBasUSDC`, so the premium itself must be paid in that token. That is still true. But the large USDC→aBasUSDC conversions users were prompted for were **entirely a product of the side bug** — they were funding a seller's collateral.
+
+Worth evaluating: the book currently carries far more `takerIsBuyer` orders collateralised in **raw USDC** than in aBasUSDC. Restricting to those would remove the Aave step altogether. The one confirmed real protection purchase on this book settled in plain USDC.
+
+---
+
 ## Known residual issues
+
+### 0. The buy-side flow has not been proven end-to-end
+The side fix, the premium-only requirement, and the re-quote logic are all verified in isolation (86/86 tests pass, live simulations confirm `you buy the option` and a premium-sized requirement). **No successful buyer-side fill has landed yet.** After the first one, decode its `OrderFilled` event and confirm the wallet appears as `buyer`, not `seller` — given this bug shipped once, verify rather than assume.
+
+### 0b. Maker offers live ~96 seconds
+`orderExpiryTimestamp` is ~96s from publication, and `assertFillable` refuses anything under 60s remaining — so a prepared order is fillable only in roughly its first 36 seconds. Any preparatory transaction (Aave supply, collateral approval) outlasts that window and leaves the fill targeting a dead order, which reverts **`"Order expired"`** *on-chain* and costs gas. `public/app.js` handles this by re-quoting after any preparatory transaction (step 2b in `runExecute`). Do not remove that; and do not add new pre-fill transactions without re-quoting after them.
 
 ### 1. First real on-chain fill has not been executed
 No `.env`/`PRIVATE_KEY` has existed in any automated test environment. `README.md`'s "Proof" section is an honest, explicit placeholder — never replace with fake data. Before submission, fund a burner wallet with ~$20 USDC + gas on Base, follow `docs/demo-runbook.md`, and paste the real BaseScan transaction hash into `README.md`.
@@ -194,6 +247,7 @@ No `.env`/`PRIVATE_KEY` has existed in any automated test environment. `README.m
 2. **The LLM (`src/intent.ts`) never produces a number the user sees.** It only transcribes `{asset, quantity, floorTotalUsd, horizonDays}`.
 3. **No fabricated numbers, anywhere.** All prices, premiums, spot prices, and candle data trace to live SDK calls, Chainlink AggregatorV3 feeds, or Coinbase Exchange API.
 4. **Approve exact amounts, never `MaxUint256`.**
+4b. **The user BUYS the put — always. Never writes one.** `filterCandidates` must keep `takerIsBuyer`. A buyer owes the **premium only**; if any code path asks the user to hold or approve `contracts × strike`, that is the side bug resurfacing, not a protocol requirement. `Panic(0x11)` and `ERC20InsufficientAllowance` from the OptionBook are symptoms of being on the wrong side — diagnose the side before touching amounts.
 5. **Fail loud, fail cheap.** Real executions are always preceded by free simulations (`callStaticFillOrder`).
 6. **`/api/execute` requires `confirm: true`.**
 7. **Base mainnet only, chainId 8453.**

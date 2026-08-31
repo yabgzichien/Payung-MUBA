@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d"
+     viewBox="0 0 200 56" width="200" height="56">
+  <title id="t">Payung</title>
+  <desc id="d">Payung — minimal logo</desc>
+
+  <!-- Background -->
+  <rect width="200" height="56" rx="10" fill="#111"/>
+
+  <!-- Icon: single-stroke umbrella (center x=32, y=28) -->
+  <g stroke="#fcd882" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Canopy arc -->
+    <path stroke-width="2" d="M 12 32 Q 32 10 52 32"/>
+    <!-- Handle shaft -->
+    <line stroke-width="2" x1="32" y1="32" x2="32" y2="44"/>
+    <!-- Crook -->
+    <path stroke-width="2" d="M 32 44 Q 32 49 27.5 49 Q 23 49 23 44.5"/>
+  </g>
+
+  <!-- Divider -->
+  <line x1="66" y1="16" x2="66" y2="40" stroke="#333" stroke-width="1"/>
+
+  <!-- Wordmark -->
+  <text x="76" y="33"
+        font-family="'Inter','Helvetica Neue',Arial,sans-serif"
+        font-size="18" font-weight="600" letter-spacing="-0.3"
+        fill="#fcd882">Payung</text>
+</svg>

@@ -161,6 +161,37 @@ export type FilterConfig = {
 };
 
 /**
+ * Order candidates by BOTH dimensions of the user's request.
+ *
+ * The previous single sort ranked purely by strike distance, so an option
+ * expiring days before the stated deadline could rank first and be badged an
+ * exact match. The user asks for a floor AND a date; ranking must honour both.
+ *
+ * Fully-covering candidates come first, each partition internally ordered by
+ * strike distance (the original comparator, unchanged). One slot is reserved
+ * for the cheapest short-dated candidate so a fully-covering book cannot hide
+ * the cheaper partial option the user is entitled to compare against.
+ */
+export function rankCandidates(eligible: Candidate[], spec: ProtectionSpec): Candidate[] {
+  const target = impliedStrike(spec);
+  const byStrike = (a: Candidate, b: Candidate) =>
+    Math.abs(a.strike - target) - Math.abs(b.strike - target);
+
+  const covering = eligible.filter((c) => c.daysToExpiry >= spec.horizonDays).sort(byStrike);
+  const short = eligible.filter((c) => c.daysToExpiry < spec.horizonDays).sort(byStrike);
+
+  const LIMIT = 8;
+  if (covering.length === 0 || short.length === 0) {
+    return [...covering, ...short].slice(0, LIMIT);
+  }
+
+  // Reserve the final slot for the cheapest short candidate.
+  const cheapestShort = short.reduce((a, b) => (b.pricePerContract < a.pricePerContract ? b : a));
+  const head = [...covering, ...short.filter((c) => c !== cheapestShort)].slice(0, LIMIT - 1);
+  return [...head, cheapestShort];
+}
+
+/**
  * Pure filter over an already-decoded book. Exported for tests.
  *
  * This is the function whose integrity is the whole pitch. It does NOT invent
@@ -172,31 +203,25 @@ export function filterCandidates(
   spec: ProtectionSpec,
   cfg: FilterConfig
 ): Candidate[] {
-  // Derived once: the per-unit strike this spec's total value + quantity imply.
-  const target = impliedStrike(spec);
-  return (
-    book
-      // A floor under a long asset position is a PUT — the correct instrument,
-      // not a judgement call or a prediction.
-      .filter((c) => !c.isCall)
-      // CRITICAL: to BUY protection you must be the buyer. This predicate was
-      // previously inverted (`!c.makerIsBuyer`), which kept precisely the
-      // orders where the taker WRITES the put — the naked-put case this line
-      // exists to prevent. It also explained the collateral demand users hit:
-      // sellers must post contracts x strike, buyers owe only the premium.
-      .filter((c) => c.takerIsBuyer)
-      // CRITICAL: protection must be on the asset the user actually holds.
-      // The book is multi-asset; strike distance is NOT a proxy for underlying.
-      .filter((c) => c.priceFeed === cfg.assetPriceFeed)
-      // Dollar-denominated collateral only, so premiums are in dollars. The live
-      // book quotes buyable puts in aBasUSDC (Aave-wrapped USDC), not raw USDC.
-      .filter((c) => cfg.dollarTokens.has(c.collateralToken.toLowerCase()))
-      .filter((c) => c.daysToExpiry >= spec.horizonDays * 0.6)
-      .filter((c) => c.daysToExpiry <= spec.horizonDays * 2.5)
-      // Prefer strikes near the per-unit floor implied by the total value + quantity.
-      .sort((a, b) => Math.abs(a.strike - target) - Math.abs(b.strike - target))
-      .slice(0, 8)
-  );
+  const eligible = book
+    // A floor under a long asset position is a PUT — the correct instrument,
+    // not a judgement call or a prediction.
+    .filter((c) => !c.isCall)
+    // CRITICAL: to BUY protection you must be the buyer. This predicate was
+    // previously inverted (`!c.makerIsBuyer`), which kept precisely the
+    // orders where the taker WRITES the put — the naked-put case this line
+    // exists to prevent. It also explained the collateral demand users hit:
+    // sellers must post contracts x strike, buyers owe only the premium.
+    .filter((c) => c.takerIsBuyer)
+    // CRITICAL: protection must be on the asset the user actually holds.
+    // The book is multi-asset; strike distance is NOT a proxy for underlying.
+    .filter((c) => c.priceFeed === cfg.assetPriceFeed)
+    // Dollar-denominated collateral only, so premiums are in dollars. The live
+    // book quotes buyable puts in aBasUSDC (Aave-wrapped USDC), not raw USDC.
+    .filter((c) => cfg.dollarTokens.has(c.collateralToken.toLowerCase()))
+    .filter((c) => c.daysToExpiry >= spec.horizonDays * 0.6)
+    .filter((c) => c.daysToExpiry <= spec.horizonDays * 2.5);
+  return rankCandidates(eligible, spec);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { findCandidates, type ProtectionSpec } from '@/src/core';
+import { coverageChoice, findCandidates, type ProtectionSpec } from '@/src/core';
 import { validateSpec } from '@/src/intent';
 import {
   ClientError, cache, candidateId, jsonResponse, requireJsonContentType, toWire, withErrorHandling,
@@ -21,6 +21,15 @@ export async function POST(req: Request) {
     const candidates = await findCandidates(spec);
     cache.clear();
     for (const c of candidates) cache.set(candidateId(c), { candidate: c, spec, fetchedAt: Date.now() });
-    return jsonResponse(200, { candidates: candidates.map((c) => toWire(c, spec)) });
+    const choice = coverageChoice(candidates, spec);
+    return jsonResponse(200, {
+      candidates: candidates.map((c, i) => toWire(c, spec, i === 0)),
+      coverage: {
+        premiumDelta: choice.premiumDelta,
+        gapDays: choice.gapDays,
+        surplusDays: choice.surplusDays,
+        hasFullCover: choice.best !== null,
+      },
+    });
   });
 }

@@ -4,6 +4,7 @@
  * tests/wire.test.ts without pulling in Next.js or Node's http module.
  */
 import { coverageGapDays, impliedStrike, type Candidate, type ProtectionSpec } from './core';
+import { badgeFor } from './presentation';
 import type { Candle } from './spot';
 
 /** Candidates from the latest search, by id. One user, one demo — a Map is the right size. */
@@ -62,7 +63,7 @@ export function candidateId(c: Candidate): string {
   return `${String(c.raw?.signature ?? '0x').slice(2, 18)}-${Math.round(c.strike)}`;
 }
 
-export function toWire(c: Candidate, spec: ProtectionSpec) {
+export function toWire(c: Candidate, spec: ProtectionSpec, isTopPick = false) {
   const target = impliedStrike(spec);
   const pctVs = ((target - c.strike) / target) * 100;
   return {
@@ -86,6 +87,9 @@ export function toWire(c: Candidate, spec: ProtectionSpec) {
      * would badge that as a perfect match and suppress the far-miss warning.
      */
     pctFromImpliedStrike: Math.abs(pctVs),
+    coversFullHorizon: c.daysToExpiry >= spec.horizonDays,
+    /** Computed by badgeFor() — the single source of truth shared by the web UI and the CLI. */
+    badge: badgeFor(c, spec, isTopPick),
   };
 }
 

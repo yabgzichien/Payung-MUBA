@@ -4,6 +4,7 @@ let state = {
   selected: null,
   quote: null,
   candidatesSpec: null,
+  coverage: null,
   expanded: false,
   noMatchPreview: false,
   confirmed: false,
@@ -496,9 +497,10 @@ async function findFloors() {
   document.getElementById('candStale').style.display = 'none';
 
   try {
-    const { candidates } = await api('/api/candidates', { spec: currentSpec() });
+    const { candidates, coverage } = await api('/api/candidates', { spec: currentSpec() });
     state.candidates = candidates;
     state.candidatesSpec = currentSpec();
+    state.coverage = coverage ?? null;
     document.getElementById('candLoading').style.display = 'none';
 
     if (!candidates.length) {
@@ -529,28 +531,40 @@ function renderCandidates() {
   // Render Hero Card
   const heroDist = selected.pctFromImpliedStrike;
   const isFar = heroDist > CLOSEST_MATCH_MAX_PCT;
-  const sign = selected.pctVsImpliedStrike >= 0 ? '-' : '+';
-  
-  let badgeText = 'CLOSEST MATCH';
-  let badgeClass = 'badge-chip';
-  if (isFar) {
-    badgeText = `FAR FROM YOUR FLOOR · ${sign}${heroDist.toFixed(1)}%`;
-    badgeClass = 'badge-chip warn';
-  } else if (selectedIndex === 0 && heroDist < 0.01) {
-    badgeText = 'EXACT MATCH';
-    badgeClass = 'badge-chip';
-  } else if (selectedIndex === 0) {
-    badgeText = `CLOSEST MATCH · ${sign}${heroDist.toFixed(1)}%`;
-    badgeClass = 'badge-chip';
-  } else {
-    badgeText = `YOUR PICK · ${sign}${heroDist.toFixed(1)}%`;
-    badgeClass = 'badge-chip neutral';
-  }
+
+  // Badge is computed server-side by badgeFor() so the web UI and CLI can never
+  // disagree, and so the logic is unit-tested. Do not recompute it here.
+  const badge = selected.badge;
+  const badgeText = badge.text;
+  const badgeClass =
+    badge.tone === 'warn' ? 'badge-chip warn'
+    : badge.tone === 'neutral' ? 'badge-chip neutral'
+    : 'badge-chip';
 
   document.getElementById('heroStrike').textContent = formatMoney(selected.strike, 0);
   document.getElementById('heroBadge').textContent = badgeText;
   document.getElementById('heroBadge').className = badgeClass;
   document.getElementById('heroDetails').textContent = `${selected.daysToExpiry.toFixed(1)}d window · expires ${selected.expiryIso.slice(0,10)} · maximum fill ${formatMoney(selected.makerBudget, 0)}`;
+
+  // The cost of full coverage, stated. Ranking now puts covering options first,
+  // which surfaces a pricier option by default; showing the delta makes that a
+  // disclosed trade rather than a silent upsell.
+  const cov = state.coverage;
+  const tradeEl = document.getElementById('coverageTrade');
+  if (cov && cov.premiumDelta !== null && cov.gapDays !== null) {
+    const more = cov.premiumDelta >= 0;
+    tradeEl.style.display = 'block';
+    tradeEl.textContent = more
+      ? `${formatMoney(cov.premiumDelta)} more buys the ${cov.gapDays.toFixed(1)} days the cheaper offer is missing.`
+      : `Full coverage is also ${formatMoney(Math.abs(cov.premiumDelta))} cheaper than the shorter offer.`;
+  } else if (cov && !cov.hasFullCover) {
+    tradeEl.style.display = 'block';
+    tradeEl.textContent =
+      'Nothing on the live book covers your full deadline. Every offer below ends early — Payung will not paper over that.';
+  } else {
+    tradeEl.style.display = 'none';
+  }
+
   document.getElementById('heroPremium').textContent = `${formatMoney(selected.pricePerContract)} / ${asset}`;
 
   // Far Miss Warning
@@ -1494,7 +1508,7 @@ async function runExecute() {
 
 function resetFlow() {
   state = {
-    candidates: [], selected: null, quote: null, candidatesSpec: null,
+    candidates: [], selected: null, quote: null, candidatesSpec: null, coverage: null,
     expanded: false, noMatchPreview: false, confirmed: false, executed: false,
   };
   document.getElementById('confirmCheck').checked = false;

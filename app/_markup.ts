@@ -129,6 +129,7 @@ export const BODY_HTML = `
                   <span class="badge-chip" id="heroBadge">CLOSEST MATCH · +0.0%</span>
                 </div>
                 <span class="hero-details" id="heroDetails">14.0d window · expires Mar 14, 2026 · maximum fill $4,120</span>
+                <p id="coverageTrade" style="display:none; margin: 8px 0 0; font-size: 13.5px; color: oklch(0.78 0.01 80); line-height: 1.5;"></p>
               </div>
               <div class="hero-right">
                 <span class="hero-premium" id="heroPremium">$10.42 / ETH</span>

@@ -6,7 +6,7 @@
  * reading to a user as "exactly what you asked for". A badge must state both
  * dimensions of the request: the floor and the deadline.
  */
-import { impliedStrike, type ProtectionSpec } from './spec.js';
+import { impliedStrike, type ProtectionSpec } from './spec';
 import type { Candidate } from './core.js'; // type-only: no runtime SDK import
 
 export type CoverageState = 'full' | 'surplus' | 'short' | 'far-from-floor';

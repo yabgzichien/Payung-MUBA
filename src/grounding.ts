@@ -26,8 +26,18 @@ export function maskNonNumeric(text: string): string {
     .replace(/\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?/g, (m) => ' '.repeat(m.length));
 }
 
-/** Numbers with optional thousands separators and an optional decimal part. */
-const NUMBER_PATTERN = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g;
+/**
+ * Numbers with optional thousands separators, optional decimal part, and an
+ * optional leading minus sign — but the sign only counts when it isn't glued
+ * to a preceding word character. That guard is what stops this from
+ * misreading a range ("10-20" must stay [10, 20], not [10, -20]: the dash is
+ * preceded by the digit "0", a word character, so no match starts there) or a
+ * hyphenated compound ID ("TNU-AUDIT-0046" must extract as 46, not -46: the
+ * dash is preceded by the letter "T"). A genuine negative number is written
+ * with the sign preceded by whitespace, punctuation, or nothing (start of
+ * string) — never glued to a letter or digit.
+ */
+const NUMBER_PATTERN = /(?<!\w)-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<!\w)-?\d+(?:\.\d+)?/g;
 
 export function extractNumbers(text: string): NumberToken[] {
   const masked = maskNonNumeric(text);

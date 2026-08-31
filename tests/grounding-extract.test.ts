@@ -33,4 +33,20 @@ describe('extractNumbers', () => {
   it('returns nothing for prose with no digits', () => {
     expect(values('Your protection covers the full two weeks.')).toEqual([]);
   });
+
+  it('extracts a bare negative number with its sign', () => {
+    expect(values('The difference is -7 dollars.')).toEqual([-7]);
+  });
+
+  it('extracts a negative decimal', () => {
+    expect(values('Full coverage is -45.20 relative to the partial.')).toEqual([-45.2]);
+  });
+
+  it('does not misread a numeric range as a negative number', () => {
+    expect(values('Strikes span 10-20 in this book.')).toEqual([10, 20]);
+  });
+
+  it('does not misread a hyphenated compound ID as a negative number', () => {
+    expect(values('Removed in audit fix TNU-AUDIT-0046.')).toEqual([46]);
+  });
 });

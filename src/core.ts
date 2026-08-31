@@ -168,9 +168,13 @@ export type FilterConfig = {
  * exact match. The user asks for a floor AND a date; ranking must honour both.
  *
  * Fully-covering candidates come first, each partition internally ordered by
- * strike distance (the original comparator, unchanged). One slot is reserved
- * for the cheapest short-dated candidate so a fully-covering book cannot hide
- * the cheaper partial option the user is entitled to compare against.
+ * strike distance (the original comparator, unchanged). A slot is reserved
+ * for the cheapest short-dated candidate ONLY when the plain 8-item
+ * truncation would otherwise drop it — so a fully-covering book cannot hide
+ * the cheaper partial option the user is entitled to compare against, but a
+ * short candidate that would already be shown (e.g. it's nearest-strike, or
+ * there's no truncation at all) is left in its natural sorted position
+ * rather than being forced to the last slot.
  */
 export function rankCandidates(eligible: Candidate[], spec: ProtectionSpec): Candidate[] {
   const target = impliedStrike(spec);
@@ -181,13 +185,23 @@ export function rankCandidates(eligible: Candidate[], spec: ProtectionSpec): Can
   const short = eligible.filter((c) => c.daysToExpiry < spec.horizonDays).sort(byStrike);
 
   const LIMIT = 8;
-  if (covering.length === 0 || short.length === 0) {
-    return [...covering, ...short].slice(0, LIMIT);
+  const natural = [...covering, ...short];
+
+  if (natural.length <= LIMIT || covering.length === 0 || short.length === 0) {
+    return natural.slice(0, LIMIT);
   }
 
-  // Reserve the final slot for the cheapest short candidate.
+  // Only reserve a slot for the cheapest short candidate if the natural
+  // (untouched) ordering would actually truncate it away. If it already
+  // survives naturally — including landing there by being nearest-strike
+  // AND cheapest — leave the natural order alone.
   const cheapestShort = short.reduce((a, b) => (b.pricePerContract < a.pricePerContract ? b : a));
-  const head = [...covering, ...short.filter((c) => c !== cheapestShort)].slice(0, LIMIT - 1);
+  const naturalTop = natural.slice(0, LIMIT);
+  if (naturalTop.includes(cheapestShort)) {
+    return naturalTop;
+  }
+
+  const head = natural.filter((c) => c !== cheapestShort).slice(0, LIMIT - 1);
   return [...head, cheapestShort];
 }
 

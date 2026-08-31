@@ -26,6 +26,7 @@ import {
 import { judgeQuote } from './judgment';
 import { ensureDollarCollateral } from './aave';
 import { parseIntent, gonkaLlm } from './intent';
+import { commitmentFor, writeCommitment } from './commitments';
 
 const [cmd, ...args] = process.argv.slice(2);
 const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -168,6 +169,19 @@ async function main() {
       );
       console.log(`  ->    ${res.explorer}\n`);
       console.log('Put that URL on screen during the pitch.\n');
+
+      // execute()'s return doesn't surface a clean on-chain option contract
+      // address (receipt is `any`, and the SDK's documented FillOrderResult
+      // shape isn't verified against this codebase's own fill-safety tests —
+      // see fill-safety.test.ts's fillOrder mock, which models only
+      // { hash, logs }). Use the order's signature instead: it's already the
+      // stable per-order identifier this codebase relies on elsewhere
+      // (api-shared.ts's candidateId, ranking.test.ts) for exactly this kind
+      // of "which order was this" bookkeeping.
+      writeCommitment(commitmentFor(
+        spec, res.hash, pick.raw?.signature ?? 'unknown',
+        q.strike, q.expiry.toISOString(), q.contracts, new Date()
+      ));
       break;
     }
 

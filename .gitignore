@@ -36,3 +36,6 @@ next-env.d.ts
 *.zip
 *Design-handoff*
 
+# Local wallet-adjacent operational state (commitments, etc.)
+.payung/
+

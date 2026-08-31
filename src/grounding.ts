@@ -49,3 +49,29 @@ export function extractNumbers(text: string): NumberToken[] {
   }
   return out;
 }
+
+function decimalsOf(raw: string): number {
+  const dot = raw.indexOf('.');
+  return dot === -1 ? 0 : raw.length - dot - 1;
+}
+
+/**
+ * A token is grounded if some allowed value, rounded to the precision the model
+ * actually wrote, equals it.
+ *
+ * This admits legitimate rounding (12.081192 written as "$12.08") while
+ * rejecting both invention ("$15") and false precision ("12.0812" from a source
+ * of 12.08). Precision is taken from the model's own token, so the model cannot
+ * widen the tolerance by writing more digits.
+ */
+export function isGrounded(tok: NumberToken, allowed: number[]): boolean {
+  const d = decimalsOf(tok.raw);
+  return allowed.some((v) => Number(v.toFixed(d)) === tok.value);
+}
+
+export function checkGrounding(
+  text: string, allowed: number[]
+): { ok: boolean; ungrounded: NumberToken[] } {
+  const ungrounded = extractNumbers(text).filter((t) => !isGrounded(t, allowed));
+  return { ok: ungrounded.length === 0, ungrounded };
+}

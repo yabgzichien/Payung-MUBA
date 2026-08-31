@@ -263,8 +263,38 @@ async function main() {
       }
     }
 
+    case 'watch': {
+      const { runWatchCycle } = await import('./watcher.js');
+      const { DEFAULT_POLICY, validatePolicy } = await import('./policy.js');
+      const { signerFromEnv, readClient } = await import('./core.js');
+
+      const auto = process.argv.includes('--auto');
+      const policy = { ...DEFAULT_POLICY };
+      const errs = validatePolicy(policy);
+      if (auto && errs.length) {
+        console.error(`--auto refuses to start: ${errs.join('; ')}`);
+        process.exit(1);
+      }
+
+      const address = signerFromEnv(readClient().provider).address;
+      const intervalMs = 60_000;
+      console.log(`Watching ${address} — ${auto ? 'AUTO (will spend)' : 'notify only'}. Ctrl-C to stop.\n`);
+
+      for (;;) {
+        try {
+          const r = await runWatchCycle({ address, policy, auto });
+          const stamp = new Date().toISOString().slice(11, 19);
+          console.log(`[${stamp}] checked ${r.checked}, rolls ${r.rolls}, blocked ${r.blocked}`);
+          for (const a of r.alerts) console.log(`\n🔔 ${a}\n`);
+        } catch (e: any) {
+          console.error(`[watch] cycle failed: ${e?.shortMessage || e?.message || e}`);
+        }
+        await new Promise((r) => setTimeout(r, intervalMs));
+      }
+    }
+
     default:
-      console.log('commands: book | whoami | deposit | quote | simulate | execute | preflight | ask | agent');
+      console.log('commands: book | whoami | deposit | quote | simulate | execute | preflight | ask | agent | watch');
       console.log('  npm run book');
       console.log('  npm run quote -- 1 2400 10 14        # <quantity> <floorTotalUsd> <collateralUsdc> [horizonDays]');
       console.log('  npm run simulate -- 1 2400 10 14');

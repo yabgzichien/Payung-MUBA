@@ -206,6 +206,43 @@ export function rankCandidates(eligible: Candidate[], spec: ProtectionSpec): Can
 }
 
 /**
+ * The coverage trade-off, computed so the UI can state it instead of implying it.
+ *
+ * Ranking full coverage first surfaces a more expensive option by default.
+ * Presenting that without naming the price difference is an upsell; naming it
+ * ("$2.55 more buys the 4 days you asked for") is a disclosure.
+ */
+export type CoverageChoice = {
+  best: Candidate | null;
+  cheaperShort: Candidate | null;
+  /** best − cheaperShort, per contract. Negative when full coverage is cheaper. */
+  premiumDelta: number | null;
+  /** Days cheaperShort falls short of the stated deadline. */
+  gapDays: number | null;
+  /** Days best runs past the stated deadline. */
+  surplusDays: number | null;
+};
+
+export function coverageChoice(ranked: Candidate[], spec: ProtectionSpec): CoverageChoice {
+  const covering = ranked.filter((c) => c.daysToExpiry >= spec.horizonDays);
+  const short = ranked.filter((c) => c.daysToExpiry < spec.horizonDays);
+
+  const best = covering[0] ?? null;
+  const cheaperShort = short.length
+    ? short.reduce((a, b) => (b.pricePerContract < a.pricePerContract ? b : a))
+    : null;
+
+  return {
+    best,
+    cheaperShort,
+    premiumDelta:
+      best && cheaperShort ? best.pricePerContract - cheaperShort.pricePerContract : null,
+    gapDays: cheaperShort ? spec.horizonDays - cheaperShort.daysToExpiry : null,
+    surplusDays: best ? best.daysToExpiry - spec.horizonDays : null,
+  };
+}
+
+/**
  * Pure filter over an already-decoded book. Exported for tests.
  *
  * This is the function whose integrity is the whole pitch. It does NOT invent

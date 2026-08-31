@@ -247,10 +247,18 @@ async function main() {
       for (;;) {
         const line = (await rl.question('> ')).trim();
         if (!line) continue;
-        state = await runAgentTurn(state, line, chat, TOOLS);
-        console.log(`\n${state.reply}\n`);
-        for (const v of state.violations) {
-          console.log(`  [guard] blocked ungrounded numbers: ${v.tokens.join(', ')}`);
+        // A single turn failing (network blip, Gonka rate limit, etc.) must not
+        // kill the whole session — only this specific call is guarded, so
+        // Ctrl-C / readline's own error handling is untouched. `state` from
+        // before the failed turn is kept as-is so the user can just retry.
+        try {
+          state = await runAgentTurn(state, line, chat, TOOLS);
+          console.log(`\n${state.reply}\n`);
+          for (const v of state.violations) {
+            console.log(`  [guard] blocked ungrounded numbers: ${v.tokens.join(', ')}`);
+          }
+        } catch (e: any) {
+          console.log(`\n[error] ${e?.shortMessage || e?.message || String(e)} — try again.\n`);
         }
       }
     }

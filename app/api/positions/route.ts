@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { ethers } from 'ethers';
 import { readClient, STRIKE_DECIMALS, USDC_DECIMALS } from '@/src/core';
 import { jsonResponse, withErrorHandling } from '@/src/api-shared';
+import { shapeProtection } from '@/src/positions';
 
 /**
  * The indexer returns tx hashes WITHOUT the 0x prefix (verified against 5817
@@ -22,45 +23,6 @@ const BASESCAN_TX = (hash: string) => `https://basescan.org/tx/${hash}`;
 function toNum(v: unknown, scale = 1): number | null {
   if (v === undefined || v === null) return null;
   return Number(v) / scale;
-}
-
-function shapeProtection(p: any, nowSec: number) {
-  const strikeRaw = Array.isArray(p.option?.strikes) && p.option.strikes.length > 0
-    ? p.option.strikes[0]
-    : Array.isArray(p.strikes) && p.strikes.length > 0
-    ? p.strikes[0]
-    : undefined;
-  const expirySec = Number(p.option?.expiry ?? p.expiryTimestamp ?? 0) || null;
-  const entrySec = p.entryTimestamp !== undefined ? Number(p.entryTimestamp) : null;
-  const dec = Number(p.collateralDecimals ?? USDC_DECIMALS);
-  const entryTxHash = normalizeHash(p.entryTxHash);
-  return {
-    id: String(p.id),
-    optionAddress: p.optionAddress,
-    underlying: p.option?.underlying ?? p.underlyingAsset ?? null,
-    strike: toNum(strikeRaw, 10 ** STRIKE_DECIMALS),
-    contracts: toNum(p.amount ?? p.numContracts, 10 ** USDC_DECIMALS),
-    /**
-     * The indexer's `entryPrice` is the on-chain OrderFilled `premiumAmount`
-     * — the TOTAL premium paid, in collateral units (verified by decoding
-     * tx 0xc15c6710…: indexer 12081192 === event premiumAmount 12081192,
-     * i.e. $12.08 at 6dp). It is NOT per-contract and NOT the order book's
-     * 1e8 price scale; dividing by that scale reported it 100x too small.
-     */
-    premiumPaid: toNum(p.entryPrice ?? p.entryPremium, 10 ** dec),
-    collateralAmount: toNum(p.collateralAmount, 10 ** dec),
-    collateralSymbol: p.collateralSymbol ?? null,
-    pnlUsd: p.pnlUsd != null ? Number(p.pnlUsd) / 1e8 : null,
-    // 'active' | 'closed' | 'expired-awaiting-settlement' | 'settled-itm' | 'settled-otm', falls back to the coarser field.
-    status: p.optionStatus ?? p.status ?? null,
-    exercised: p.settlement?.exercised ?? null,
-    entryTimestamp: entrySec,
-    entryTxHash,
-    entryExplorer: entryTxHash ? BASESCAN_TX(entryTxHash) : null,
-    expiryTimestamp: expirySec,
-    expiryIso: expirySec ? new Date(expirySec * 1000).toISOString() : null,
-    daysToExpiry: expirySec ? (expirySec - nowSec) / 86400 : null,
-  };
 }
 
 /** One trade-log entry (fill/exercise/settle/close), decoded for the UI. */

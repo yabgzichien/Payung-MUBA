@@ -212,8 +212,37 @@ async function main() {
       break;
     }
 
+    case 'agent': {
+      const { newAgentState, runAgentTurn } = await import('./agent.js');
+      const { gonkaChat } = await import('./chat.js');
+      const { TOOLS } = await import('./tools.js');
+      const readline = await import('node:readline/promises');
+
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const chat = gonkaChat();
+      let state = newAgentState();
+      // Simulation needs an address; reuse the burner's if one is configured.
+      try {
+        const { signerFromEnv, readClient } = await import('./core.js');
+        state.ctx.signerAddress = signerFromEnv(readClient().provider).address;
+      } catch {
+        // No key configured — simulate_fill will decline politely. Not fatal.
+      }
+
+      console.log('Payung agent. Say what you are afraid of losing. Ctrl-C to quit.\n');
+      for (;;) {
+        const line = (await rl.question('> ')).trim();
+        if (!line) continue;
+        state = await runAgentTurn(state, line, chat, TOOLS);
+        console.log(`\n${state.reply}\n`);
+        for (const v of state.violations) {
+          console.log(`  [guard] blocked ungrounded numbers: ${v.tokens.join(', ')}`);
+        }
+      }
+    }
+
     default:
-      console.log('commands: book | whoami | deposit | quote | simulate | execute | preflight | ask');
+      console.log('commands: book | whoami | deposit | quote | simulate | execute | preflight | ask | agent');
       console.log('  npm run book');
       console.log('  npm run quote -- 1 2400 10 14        # <quantity> <floorTotalUsd> <collateralUsdc> [horizonDays]');
       console.log('  npm run simulate -- 1 2400 10 14');
@@ -221,6 +250,7 @@ async function main() {
       console.log('  npm run deposit -- 12');
       console.log('  npm run preflight -- 1 2300 14        # <quantity> <floorTotalUsd> [horizonDays]');
       console.log('  npm run ask -- "I have 1 ETH and need it worth at least $2,300 in two weeks"');
+      console.log('  npm run agent                          # interactive agent loop');
   }
 }
 

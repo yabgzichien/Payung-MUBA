@@ -1647,3 +1647,44 @@ if (document.readyState === 'loading') {
 } else {
   initApp();
 }
+
+// Agent pane. Independent of the main pipeline: if this errors, the fixed flow
+// above is unaffected. Optional-chained like the wiring above, since /history
+// and other pages don't render #agentForm.
+const agentSessionId = `s-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+function appendAgentLine(who, text, tone) {
+  const el = document.createElement('div');
+  el.style.cssText = `font-size:13.5px; line-height:1.55; color:${tone || 'inherit'};`;
+  el.innerHTML = `<b>${who}</b> ${text}`;
+  document.getElementById('agentLog').appendChild(el);
+  el.scrollIntoView({ block: 'nearest' });
+}
+
+document.getElementById('agentForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('agentInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  appendAgentLine('You', text);
+  appendAgentLine('Payung', 'thinking…', 'oklch(0.7 0.01 78)');
+  const thinking = document.getElementById('agentLog').lastChild;
+
+  try {
+    const res = await fetch('/api/agent', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text, sessionId: agentSessionId, signerAddress: walletState.address || null }),
+    });
+    const data = await res.json();
+    thinking.remove();
+    appendAgentLine('Payung', data.reply || data.error || 'No answer.');
+    if (data.guardBlocked && data.guardBlocked.length) {
+      appendAgentLine('Guard', `blocked ungrounded numbers: ${data.guardBlocked.flat().join(', ')}`, 'var(--amber, oklch(0.8 0.12 80))');
+    }
+  } catch (err) {
+    thinking.remove();
+    appendAgentLine('Payung', `Could not reach the agent: ${err.message}`, 'oklch(0.7 0.1 30)');
+  }
+});

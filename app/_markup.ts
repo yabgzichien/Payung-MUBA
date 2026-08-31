@@ -369,4 +369,18 @@ export const BODY_HTML = `
 
 </div>
 
+<section id="agentPane" style="margin-top: 28px; border: 1px solid var(--green-border); border-radius: var(--radius-sm); padding: 16px;">
+  <span class="flow-label">ASK THE AGENT</span>
+  <div id="agentLog" style="display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-height: 320px; overflow-y: auto;"></div>
+  <form id="agentForm" style="display: flex; gap: 8px;">
+    <input id="agentInput" type="text" autocomplete="off"
+           placeholder="I have 1 ETH and need it worth at least $2,300 in two weeks"
+           style="flex: 1; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--input-bg); border: 1px solid var(--green-border); color: inherit;" />
+    <button type="submit" class="btn-primary">Ask</button>
+  </form>
+  <p style="margin: 10px 0 0; font-size: 12.5px; color: oklch(0.7 0.01 78);">
+    Every figure the agent states is checked against live tool output before you see it.
+  </p>
+</section>
+
 `;

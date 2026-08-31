@@ -13,6 +13,7 @@
     "whoami": "tsx src/cli.ts whoami",
     "deposit": "tsx src/cli.ts deposit",
     "ask": "tsx src/cli.ts ask",
+    "agent": "tsx src/cli.ts agent",
     "dev": "next dev -p 8787",
     "build": "next build",
     "start": "next start -p 8787",

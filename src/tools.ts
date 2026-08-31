@@ -108,7 +108,7 @@ export const TOOLS: ToolDef[] = [
             : null,
         },
         numbers: [
-          ...wire.flatMap((w) => nums(w.strike, w.daysToExpiry, w.pricePerContract, w.coverageGapDays, w.makerBudget, w.impliedStrike, w.pctFromImpliedStrike)),
+          ...wire.flatMap((w) => nums(w.strike, w.daysToExpiry, w.pricePerContract, w.coverageGapDays, w.makerBudget, w.impliedStrike, w.pctFromImpliedStrike, w.iv)),
           ...nums(choice.premiumDelta, choice.gapDays, choice.surplusDays),
         ],
       };
@@ -224,15 +224,16 @@ export const TOOLS: ToolDef[] = [
       return {
         ok: true,
         data: shaped,
-        numbers: shaped.flatMap((p) => nums(p.strike, p.contracts, p.premiumPaid, p.daysToExpiry, p.pnlUsd)),
+        numbers: shaped.flatMap((p) => nums(p.strike, p.contracts, p.premiumPaid, p.daysToExpiry, p.pnlUsd, p.collateralAmount, p.entryTimestamp, p.expiryTimestamp)),
       };
     },
   },
   {
     name: 'simulate_fill',
     description:
-      'Free dry run of the exact fill against current chain state (callStaticFillOrder). ' +
-      'Costs nothing and moves no funds, but requires a signer address.',
+      'Free dry run of the exact fill against current chain state (callStaticFillOrder), using ' +
+      'Payung\'s own operating wallet — NOT a simulation of the connected user\'s specific wallet ' +
+      'balance or allowances. Costs nothing and moves no funds.',
     readOnly: false,
     parameters: {
       type: 'object',
@@ -245,8 +246,16 @@ export const TOOLS: ToolDef[] = [
       }
       const c = ctx.candidates.get(id);
       if (!c) return { ok: false, error: `Unknown candidate id ${id}. Call find_protection first.` };
-      const r: any = await simulate(c, spendUsd);
-      return { ok: true, data: r, numbers: nums(r?.contracts, r?.premiumUsdc) };
+      const r = await simulate(c, spendUsd);
+      // simulate()'s real return is { ok, result?, error? } — result (when present)
+      // carries bigint gas fields that JSON.stringify cannot serialize, and there
+      // is no clean end-user-citable number on this type at all. Strip to a safe,
+      // JSON-serializable summary instead of returning `result` verbatim.
+      return {
+        ok: true,
+        data: { simulationOk: r.ok, error: r.error ?? null },
+        numbers: [],
+      };
     },
   },
   {

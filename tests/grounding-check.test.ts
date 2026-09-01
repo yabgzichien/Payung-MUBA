@@ -22,6 +22,25 @@ describe('isGrounded', () => {
     // The source is 12.08 exactly; claiming 12.0812 invents digits.
     expect(isGrounded({ raw: '12.0812', value: 12.0812, index: 0 }, [12.08])).toBe(false);
   });
+
+  it('grounds an unsigned token against a negative allowed value phrased with a directional word', () => {
+    expect(isGrounded({ raw: '7.00', value: 7, index: 0 }, [-7])).toBe(true);
+  });
+
+  it('grounds an unsigned integer token against a negative allowed value at coarser precision', () => {
+    expect(isGrounded({ raw: '45', value: 45, index: 0 }, [-45.2])).toBe(true);
+  });
+
+  it('does NOT let an explicitly-signed token match a positive allowed value via the widening', () => {
+    // The model wrote "-7" itself — that must mean it's claiming a negative
+    // number exists in the allowlist, not get a free pass via magnitude-only
+    // matching against a positive value.
+    expect(isGrounded({ raw: '-7', value: -7, index: 0 }, [7])).toBe(false);
+  });
+
+  it('still rejects a magnitude that is not actually present in the allowlist, unsigned or not', () => {
+    expect(isGrounded({ raw: '500', value: 500, index: 0 }, [-7, 12.08])).toBe(false);
+  });
 });
 
 describe('checkGrounding', () => {

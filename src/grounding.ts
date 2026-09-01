@@ -63,10 +63,29 @@ function decimalsOf(raw: string): number {
  * rejecting both invention ("$15") and false precision ("12.0812" from a source
  * of 12.08). Precision is taken from the model's own token, so the model cannot
  * widen the tolerance by writing more digits.
+ *
+ * An unsigned token is also grounded against the negation of a signed allowed
+ * value. Natural language expresses a negative delta with a directional word
+ * ("$7 cheaper", "$7 less") rather than a literal minus sign, so
+ * extractNumbers correctly reads "$7.00 cheaper" as the unsigned token 7, not
+ * -7 — there is no "-" character in that text to extract. Without this
+ * widening, a genuinely negative allowed value (e.g. coverageChoice's
+ * premiumDelta when full coverage is cheaper) could never ground a naturally
+ * phrased response, forcing an unnecessary regenerate/fallback cycle over
+ * correct content. The widening only runs one direction: a token the model
+ * DID write with an explicit "-" still must match a signed allowed value
+ * exactly, so this can't be used to launder a genuinely positive claim into a
+ * match against a negative allowed value or vice versa.
  */
 export function isGrounded(tok: NumberToken, allowed: number[]): boolean {
   const d = decimalsOf(tok.raw);
-  return allowed.some((v) => Number(v.toFixed(d)) === tok.value);
+  const isSigned = tok.raw.startsWith('-');
+  return allowed.some((v) => {
+    const rounded = Number(v.toFixed(d));
+    if (rounded === tok.value) return true;
+    if (!isSigned && -rounded === tok.value) return true;
+    return false;
+  });
 }
 
 export function checkGrounding(

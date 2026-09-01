@@ -5,9 +5,10 @@
 // (intent-eval.test.ts) doesn't exercise checkGrounding at all.
 //
 // Every case here was hand-traced against the real checkGrounding/isGrounded/
-// extractNumbers implementation before being committed — see the "false
-// sign" case below for the one spot where the obvious assertion doesn't
-// match the real, already-reviewed behavior.
+// extractNumbers implementation before being committed — see the "negative
+// delta phrased without a literal minus sign" case below, which exercises
+// isGrounded's unsigned-vs-negative-allowed-value widening (added in a later
+// fix round after this suite first surfaced the gap).
 import { describe, it, expect } from 'vitest';
 import { checkGrounding } from '../../src/grounding.js';
 
@@ -29,29 +30,29 @@ describe('grounding eval — adversarial cases', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('rejects a negative delta phrased without a literal minus sign', () => {
-    // Corrected from the planned assertion (expect ok===true). Hand-trace against
-    // the real extractNumbers/isGrounded:
-    //   - "$7.00" contains no "-" character in the source text, so the token
-    //     extracted is {raw: "7.00", value: 7}, NOT -7. The word "cheaper"
-    //     carries the negative sense in English, but checkGrounding does no
-    //     semantic sign inference from surrounding prose — it only matches the
-    //     literal digits (and an explicit leading "-") the model wrote.
-    //   - isGrounded then checks whether some allowed value, rounded to 2
-    //     decimals (the precision of "7.00"), equals 7. The only allowed value
-    //     is -7, and (-7).toFixed(2) = "-7.00" -> -7, which is !== 7.
-    //   - So checkGrounding returns { ok: false, ungrounded: [{value: 7, ...}] },
-    //     not ok: true as originally assumed.
-    // This is a real (if narrow) gap in the guard: a model asserting a signed
-    // delta in prose without the literal minus sign will get flagged as
-    // ungrounded even when the magnitude is correct and the allowed list has
-    // the true signed value. Filed as a discrepancy, not silently patched —
-    // src/grounding.ts is out of scope here. A model that wants credit for a
-    // negative delta must write the sign (e.g. "-$7.00" or "a $-7 change"),
-    // or the allowed list must additionally include the unsigned magnitude.
+  it('accepts a negative delta phrased without a literal minus sign', () => {
+    // Originally this test asserted ok: false, with a hand-trace showing a
+    // real gap: "$7.00" contains no "-" character, so extractNumbers reads
+    // the unsigned token {raw: "7.00", value: 7}, and the old isGrounded only
+    // matched a token's exact signed value against a rounded allowed value —
+    // so an allowed list of [-7] could never ground it, even though "$7.00
+    // cheaper" is exactly what a correctly-grounded negative delta of -7
+    // looks like in natural English (nobody says "the premium is -$7.00").
+    //
+    // src/grounding.ts's isGrounded was subsequently widened (see its
+    // docstring) to accept an unsigned token against the negation of a
+    // signed allowed value, while still requiring an explicitly-signed token
+    // ("-$7.00") to match a signed allowed value exactly. Re-traced against
+    // the fixed implementation:
+    //   - decimalsOf("7.00") = 2, isSigned = false (no leading "-").
+    //   - allowed = [-7]; rounded = (-7).toFixed(2) -> Number("-7.00") = -7.
+    //   - rounded (-7) !== tok.value (7), so the direct match fails as before.
+    //   - the widening then checks !isSigned && -rounded === tok.value:
+    //     -(-7) = 7 === 7 -> true. So isGrounded now returns true, and
+    //     checkGrounding returns { ok: true, ungrounded: [] }.
     const r = checkGrounding('Full coverage is actually $7.00 cheaper here.', [-7]);
-    expect(r.ok).toBe(false);
-    expect(r.ungrounded.map((t) => t.value)).toEqual([7]);
+    expect(r.ok).toBe(true);
+    expect(r.ungrounded).toEqual([]);
   });
 
   it('rejects a fabricated price prediction', () => {

@@ -118,4 +118,19 @@ describe('runAgentTurn', () => {
     expect(s.reply).toBe('ETH is $2,410.50.');
     expect(s.violations).toHaveLength(1);
   });
+
+  it('treats an empty reply with no tool calls as a violation, not a vacuous success', async () => {
+    // {content: null, toolCalls: []} is a real observed Gonka response shape.
+    // checkGrounding('') vacuously passes (no numbers to reject), so without
+    // the fix this would be accepted as reply === ''. It must instead retry
+    // and, since the retry is also empty, fall back deterministically.
+    const chat = scripted([
+      { content: null, toolCalls: call('get_spot') },
+      { content: null },
+      { content: '' },
+    ]);
+    const s = await runAgentTurn(newAgentState(), 'eth?', chat, fakeTools);
+    expect(s.reply).toContain('could not');
+    expect(s.violations).toHaveLength(2);
+  });
 });

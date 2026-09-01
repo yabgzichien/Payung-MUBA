@@ -37,10 +37,20 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (!tool) {
     return { isError: true, content: [{ type: 'text', text: `No such tool: ${req.params.name}` }] };
   }
-  const result = await tool.run(req.params.arguments ?? {}, ctx);
-  return result.ok
-    ? { content: [{ type: 'text', text: JSON.stringify(result.data, null, 2) }] }
-    : { isError: true, content: [{ type: 'text', text: result.error }] };
+  try {
+    const result = await tool.run(req.params.arguments ?? {}, ctx);
+    if (!result.ok) {
+      return { isError: true, content: [{ type: 'text', text: result.error }] };
+    }
+    // numbers is the grounding allowlist this tool call is allowed to cite —
+    // included so a host model enforcing its own grounding guard has what it
+    // needs; this adapter has no host-side prose to check itself.
+    return {
+      content: [{ type: 'text', text: JSON.stringify({ data: result.data, numbers: result.numbers }, null, 2) }],
+    };
+  } catch (e: any) {
+    return { isError: true, content: [{ type: 'text', text: e?.message || String(e) }] };
+  }
 });
 
 await server.connect(new StdioServerTransport());

@@ -269,11 +269,35 @@ async function main() {
       const { signerFromEnv, readClient } = await import('./core.js');
 
       const auto = process.argv.includes('--auto');
-      const policy = { ...DEFAULT_POLICY };
-      const errs = validatePolicy(policy);
-      if (auto && errs.length) {
-        console.error(`--auto refuses to start: ${errs.join('; ')}`);
-        process.exit(1);
+
+      function flagValue(name: string): string | undefined {
+        const idx = process.argv.indexOf(name);
+        return idx >= 0 ? process.argv[idx + 1] : undefined;
+      }
+
+      let policy: typeof DEFAULT_POLICY;
+      if (auto) {
+        // --auto spends real money unattended. It must never fall back to a
+        // silent default — every limit is a deliberate, explicit choice the
+        // operator states on the command line, or the process refuses to start.
+        const maxPremiumUsd = Number(flagValue('--max-premium'));
+        const maxRolls = Number(flagValue('--max-rolls'));
+        const rollWhenDaysToExpiry = Number(flagValue('--roll-when-days') ?? '2');
+        const minDeadlineDaysLeft = Number(flagValue('--min-deadline-days') ?? '1');
+        const assetsArg = flagValue('--assets');
+        const assets = (assetsArg ? assetsArg.split(',') : ['ETH', 'BTC']) as ('ETH' | 'BTC')[];
+        policy = { maxPremiumUsd, maxRolls, rollWhenDaysToExpiry, minDeadlineDaysLeft, assets };
+        const errs = validatePolicy(policy);
+        if (errs.length) {
+          console.error(
+            `--auto refuses to start: ${errs.join('; ')}\n` +
+            `Pass --max-premium <usd> and --max-rolls <n> explicitly, e.g.:\n` +
+            `  npm run watch -- --auto --max-premium 25 --max-rolls 3`
+          );
+          process.exit(1);
+        }
+      } else {
+        policy = { ...DEFAULT_POLICY };
       }
 
       const address = signerFromEnv(readClient().provider).address;

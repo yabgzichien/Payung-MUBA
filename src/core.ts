@@ -14,7 +14,7 @@
 import 'dotenv/config';
 import { ethers } from 'ethers';
 import { ThetanutsClient } from '@thetanuts-finance/thetanuts-client';
-import { impliedStrike, type ProtectionSpec } from './spec';
+import { impliedStrike, coversHorizon, type ProtectionSpec } from './spec';
 
 export const BASE_CHAIN_ID = 8453;
 export const USDC_DECIMALS = 6;
@@ -181,8 +181,8 @@ export function rankCandidates(eligible: Candidate[], spec: ProtectionSpec): Can
   const byStrike = (a: Candidate, b: Candidate) =>
     Math.abs(a.strike - target) - Math.abs(b.strike - target);
 
-  const covering = eligible.filter((c) => c.daysToExpiry >= spec.horizonDays).sort(byStrike);
-  const short = eligible.filter((c) => c.daysToExpiry < spec.horizonDays).sort(byStrike);
+  const covering = eligible.filter((c) => coversHorizon(c.daysToExpiry, spec.horizonDays)).sort(byStrike);
+  const short = eligible.filter((c) => !coversHorizon(c.daysToExpiry, spec.horizonDays)).sort(byStrike);
 
   const LIMIT = 8;
   const natural = [...covering, ...short];
@@ -224,8 +224,8 @@ export type CoverageChoice = {
 };
 
 export function coverageChoice(ranked: Candidate[], spec: ProtectionSpec): CoverageChoice {
-  const covering = ranked.filter((c) => c.daysToExpiry >= spec.horizonDays);
-  const short = ranked.filter((c) => c.daysToExpiry < spec.horizonDays);
+  const covering = ranked.filter((c) => coversHorizon(c.daysToExpiry, spec.horizonDays));
+  const short = ranked.filter((c) => !coversHorizon(c.daysToExpiry, spec.horizonDays));
 
   const best = covering[0] ?? null;
   const cheaperShort = short.length

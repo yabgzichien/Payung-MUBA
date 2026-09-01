@@ -12,7 +12,11 @@ import { join } from 'node:path';
 import { readCommitments, deadlineDaysLeft, incrementRolls, DEFAULT_DIR, type Commitment } from './commitments';
 import { decideRoll, type RollDecision, type RollPolicy } from './policy';
 import { shapeProtection, type ShapedPosition } from './positions';
-import { readClient, findCandidates, quote, simulate, execute, type Candidate } from './core';
+import {
+  readClient, writeClient, findCandidates, quote, simulate, execute,
+  collateralDecimals, type Candidate,
+} from './core';
+import { ensureDollarCollateral } from './aave';
 
 export type AuditEntry = {
   at: string;
@@ -132,6 +136,19 @@ export async function runWatchCycle(opts: {
 
     // --auto: simulate first, always. Never send a fill that was not dry-run.
     await simulate(replacement.candidate, replacement.premiumUsd);
+
+    // Mirror cli.ts's manual `execute` case: ensure the burner wallet holds
+    // the order book's actual collateral token (aBasUSDC) before executing,
+    // not just raw USDC. execute() sends an approval transaction before its
+    // own internal resimulate/fill, so skipping this would spend gas on a
+    // doomed roll whenever the wallet holds the wrong collateral shape.
+    const wclient = writeClient();
+    const dec = await collateralDecimals(wclient, replacement.candidate.collateralToken);
+    await ensureDollarCollateral(
+      wclient, replacement.candidate.collateralToken,
+      BigInt(Math.round(replacement.premiumUsd * 10 ** dec))
+    );
+
     const receipt = await execute(replacement.candidate, replacement.premiumUsd);
     incrementRolls(c.txHash);
     report.rolls++;

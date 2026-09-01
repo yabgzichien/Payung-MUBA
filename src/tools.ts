@@ -20,20 +20,35 @@ import {
 import { judgeQuote } from './judgment';
 import { fetchSpot } from './spot';
 import { shapeProtection } from './positions';
-import { candidateId, toWire } from './api-shared';
+import { candidateId, toWire, CACHE_MAX_AGE_MS } from './api-shared';
 
 export type ToolResult =
   | { ok: true; data: unknown; numbers: number[] }
   | { ok: false; error: string };
 
 export type ToolContext = {
-  /** Candidates seen this turn, so later tools can resolve an id the model quotes back. */
-  candidates: Map<string, Candidate>;
+  /** Candidates seen this turn, keyed by id, with when each was fetched. */
+  candidates: Map<string, { candidate: Candidate; fetchedAt: number }>;
   /** The spec under discussion, once known. */
   spec: ProtectionSpec | null;
   /** Address to simulate against. null disables simulate_fill. */
   signerAddress: string | null;
 };
+
+/**
+ * Resolve a candidate id, refusing anything older than CACHE_MAX_AGE_MS — the
+ * same staleness rule api-shared.ts's getCached() enforces for the route
+ * layer. Without this, the agent surface could quote/judge/simulate/propose
+ * against a candidate found long ago, after the live book has moved.
+ */
+function resolveCandidate(ctx: ToolContext, id: string): Candidate | { error: string } {
+  const entry = ctx.candidates.get(id);
+  if (!entry) return { error: `Unknown candidate id ${id}. Call find_protection first.` };
+  if (Date.now() - entry.fetchedAt > CACHE_MAX_AGE_MS) {
+    return { error: `This candidate was fetched too long ago — the book may have moved. Call find_protection again.` };
+  }
+  return entry.candidate;
+}
 
 export type ToolDef = {
   name: string;
@@ -91,7 +106,7 @@ export const TOOLS: ToolDef[] = [
       };
       const list = await findCandidates(spec);
       ctx.spec = spec;
-      for (const c of list) ctx.candidates.set(candidateId(c), c);
+      for (const c of list) ctx.candidates.set(candidateId(c), { candidate: c, fetchedAt: Date.now() });
 
       const choice = coverageChoice(list, spec);
       const wire = list.map((c, i) => toWire(c, spec, i === 0));
@@ -127,8 +142,9 @@ export const TOOLS: ToolDef[] = [
       required: ['candidateId', 'spendUsd'],
     },
     async run({ candidateId: id, spendUsd }, ctx) {
-      const c = ctx.candidates.get(id);
-      if (!c) return { ok: false, error: `Unknown candidate id ${id}. Call find_protection first.` };
+      const resolved = resolveCandidate(ctx, id);
+      if ('error' in resolved) return { ok: false, error: resolved.error };
+      const c = resolved;
       const q = await quote(c, spendUsd);
       return {
         ok: true,
@@ -153,8 +169,9 @@ export const TOOLS: ToolDef[] = [
       required: ['candidateId', 'spendUsd'],
     },
     async run({ candidateId: id, spendUsd }, ctx) {
-      const c = ctx.candidates.get(id);
-      if (!c) return { ok: false, error: `Unknown candidate id ${id}. Call find_protection first.` };
+      const resolved = resolveCandidate(ctx, id);
+      if ('error' in resolved) return { ok: false, error: resolved.error };
+      const c = resolved;
       if (!ctx.spec) return { ok: false, error: 'No protection spec known yet. Call find_protection first.' };
       const q = await quote(c, spendUsd);
       const gap = Math.max(0, ctx.spec.horizonDays - c.daysToExpiry);
@@ -180,8 +197,9 @@ export const TOOLS: ToolDef[] = [
       required: ['candidateId', 'spendUsd', 'spotPrices'],
     },
     async run({ candidateId: id, spendUsd, spotPrices }, ctx) {
-      const c = ctx.candidates.get(id);
-      if (!c) return { ok: false, error: `Unknown candidate id ${id}. Call find_protection first.` };
+      const resolved = resolveCandidate(ctx, id);
+      if ('error' in resolved) return { ok: false, error: resolved.error };
+      const c = resolved;
       const q = await quote(c, spendUsd);
       const lo = Math.min(...spotPrices), hi = Math.max(...spotPrices);
       const curve = payoffCurve(q, [lo, hi], Math.max(1, spotPrices.length - 1));
@@ -244,8 +262,9 @@ export const TOOLS: ToolDef[] = [
       if (!ctx.signerAddress) {
         return { ok: false, error: 'Simulation needs a connected wallet address. Ask the user to connect one.' };
       }
-      const c = ctx.candidates.get(id);
-      if (!c) return { ok: false, error: `Unknown candidate id ${id}. Call find_protection first.` };
+      const resolved = resolveCandidate(ctx, id);
+      if ('error' in resolved) return { ok: false, error: resolved.error };
+      const c = resolved;
       const r = await simulate(c, spendUsd);
       // simulate()'s real return is { ok, result?, error? } — result (when present)
       // carries bigint gas fields that JSON.stringify cannot serialize, and there
@@ -261,9 +280,10 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'propose_execution',
     description:
-      'TERMINAL ACTION. Hands the user an unsigned transaction to review and sign with their own ' +
-      'wallet. This tool never signs and never spends. Call it only after the user has clearly agreed ' +
-      'to a specific candidate and amount.',
+      'TERMINAL ACTION. Prepares a summary of the proposed trade (candidate, spend amount, ' +
+      'strike, expiry, premium) for the user to review. This tool never signs or spends money ' +
+      'itself — call it only after the user has clearly agreed to a specific candidate and amount. ' +
+      'The user completes the actual transaction separately, in their own wallet, outside this tool.',
     readOnly: false,
     parameters: {
       type: 'object',
@@ -271,8 +291,9 @@ export const TOOLS: ToolDef[] = [
       required: ['candidateId', 'spendUsd'],
     },
     async run({ candidateId: id, spendUsd }, ctx) {
-      const c = ctx.candidates.get(id);
-      if (!c) return { ok: false, error: `Unknown candidate id ${id}. Call find_protection first.` };
+      const resolved = resolveCandidate(ctx, id);
+      if ('error' in resolved) return { ok: false, error: resolved.error };
+      const c = resolved;
       const q = await quote(c, spendUsd);
       return {
         ok: true,

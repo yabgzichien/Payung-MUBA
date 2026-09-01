@@ -1663,7 +1663,9 @@ const agentSessionId = `s-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 function appendAgentLine(who, text, tone) {
   const el = document.createElement('div');
   el.style.cssText = `font-size:13.5px; line-height:1.55; color:${tone || 'inherit'};`;
-  el.innerHTML = `<b>${who}</b> ${text}`;
+  const b = document.createElement('b');
+  b.textContent = who;
+  el.append(b, ' ', document.createTextNode(text));
   document.getElementById('agentLog').appendChild(el);
   el.scrollIntoView({ block: 'nearest' });
 }

@@ -40,3 +40,13 @@ export function impliedStrike(spec: ProtectionSpec): number {
 export function totalFromUnit(unitFloorUsd: number, quantity: number): number {
   return unitFloorUsd * quantity;
 }
+
+/**
+ * Whether a candidate's remaining window reaches the user's stated deadline.
+ * The single shared definition of "covers the horizon" — rankCandidates,
+ * coverageChoice, and badgeFor must all agree on this, or a candidate can be
+ * ranked as short-dated while simultaneously being badged as full coverage.
+ */
+export function coversHorizon(daysToExpiry: number, horizonDays: number): boolean {
+  return daysToExpiry >= horizonDays;
+}

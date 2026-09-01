@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { newAgentState, runAgentTurn, type AgentState } from '@/src/agent';
 import { gonkaChat } from '@/src/chat';
 import { TOOLS } from '@/src/tools';
-import { jsonResponse, requireJsonContentType, withErrorHandling } from '@/src/api-shared';
+import { jsonResponse, requireJsonContentType, withErrorHandling, serverSigningAllowed } from '@/src/api-shared';
 
 /**
  * Conversation state lives in memory, keyed by a client-supplied id. This is a
@@ -13,6 +13,15 @@ import { jsonResponse, requireJsonContentType, withErrorHandling } from '@/src/a
  */
 const sessions = new Map<string, AgentState>();
 const MAX_SESSIONS = 200;
+
+/**
+ * simulate_fill signs with the server's own burner wallet via writeClient() —
+ * the same operation /api/simulate refuses on Vercel via serverSigningAllowed().
+ * Computed once at module load since serverSigningAllowed() cannot change
+ * during a process's lifetime; on a gated deployment simulate_fill is simply
+ * never offered to the model, same as if the tool did not exist.
+ */
+const AGENT_TOOLS = serverSigningAllowed() ? TOOLS : TOOLS.filter((t) => t.readOnly);
 
 export async function POST(req: NextRequest) {
   const bad = requireJsonContentType(req);
@@ -30,7 +39,7 @@ export async function POST(req: NextRequest) {
     const prior = sessions.get(sessionId) ?? newAgentState();
     if (typeof body?.signerAddress === 'string') prior.ctx.signerAddress = body.signerAddress;
 
-    const next = await runAgentTurn(prior, text, gonkaChat(), TOOLS);
+    const next = await runAgentTurn(prior, text, gonkaChat(), AGENT_TOOLS);
     sessions.set(sessionId, next);
 
     return jsonResponse(200, {

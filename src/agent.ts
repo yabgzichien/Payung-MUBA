@@ -9,7 +9,7 @@
  * free of the SDK.
  */
 import type { ChatClient, ChatMessage } from './chat';
-import { checkGrounding, extractNumbers } from './grounding';
+import { checkGrounding, extractNumbers, type NumberToken } from './grounding';
 import type { ToolDef, ToolContext } from './tools';
 
 export const MAX_ROUNDS = 8;
@@ -22,7 +22,7 @@ HARD RULES:
 - Never predict a price or offer a market view. You have no edge and it is not your job.
 - If find_protection returns nothing, say so plainly and offer to loosen ONE constraint (a lower floor, or a different deadline). Never substitute a different option and describe it as what they asked for.
 - If an option expires before the user's deadline, say how many days short it is before discussing anything else about it.
-- propose_execution is your only terminal action, and it only prepares a transaction for the user to sign themselves. You cannot spend their money.
+- propose_execution is your only terminal action — it prepares a summary for the user to review; they complete the actual transaction separately, in their own wallet. You cannot spend their money.
 
 Be brief and concrete. Talk about dollars and dates, not options jargon.`;
 
@@ -125,7 +125,13 @@ export async function runAgentTurn(
     }
 
     const text = res.content ?? '';
-    const check = safeCheckGrounding(text, s.allowedNumbers);
+    // An empty (or whitespace-only) reply with no tool calls is not a grounded
+    // success — checkGrounding vacuously passes it since there are no numbers
+    // to reject, but a blank reply is exactly as useless to the user as an
+    // ungrounded one. Route it through the same retry-then-fallback path.
+    const check = text.trim() === ''
+      ? { ok: false, ungrounded: [] as NumberToken[] }
+      : safeCheckGrounding(text, s.allowedNumbers);
     if (check.ok) {
       s.messages.push({ role: 'assistant', content: text });
       s.reply = text;

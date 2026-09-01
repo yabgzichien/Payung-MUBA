@@ -6,7 +6,7 @@
  * reading to a user as "exactly what you asked for". A badge must state both
  * dimensions of the request: the floor and the deadline.
  */
-import { impliedStrike, type ProtectionSpec } from './spec';
+import { impliedStrike, coversHorizon, type ProtectionSpec } from './spec';
 import type { Candidate } from './core.js'; // type-only: no runtime SDK import
 
 export type CoverageState = 'full' | 'surplus' | 'short' | 'far-from-floor';
@@ -25,7 +25,7 @@ export function badgeFor(c: Candidate, spec: ProtectionSpec, isTopPick: boolean)
   // Coverage is decided BEFORE strike proximity: a floor that evaporates early
   // is a worse defect than a floor a fraction of a percent off.
   const gap = spec.horizonDays - c.daysToExpiry;
-  if (gap > 0.05) {
+  if (!coversHorizon(c.daysToExpiry, spec.horizonDays)) {
     return { state: 'short', tone: 'warn', text: `${gap.toFixed(1)} DAYS SHORT · ${floorPart}` };
   }
 

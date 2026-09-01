@@ -82,7 +82,11 @@ Point a client at it by running `npx tsx mcp/server.ts` (or `npm run mcp`) as th
 this repo's `.env` present so it can reach the live Base RPC. Every tool call is served by the
 exact same `ToolDef.run()` used by the agent and the watcher — one registry, three surfaces —
 so the MCP adapter inherits the same live pricing and the same safety filters instead of
-reimplementing them.
+reimplementing them. Each response also carries the tool's declared `numbers` allowlist, but this
+adapter does not itself enforce numeric grounding the way Payung's own chat surfaces do (the agent
+pane and the CLI's `agent` command) — over MCP the prose is the *host's*, so grounding enforcement
+against the returned `numbers` is the host application's responsibility if it wants the same
+guarantee.
 
 **Why this isn't built on `@thetanuts-finance/mcp`:** that server exposes a generic surface over
 the Thetanuts orderbook that permits *writing* options — selling collateralized puts — which is

@@ -136,6 +136,16 @@ export const BODY_HTML = `
                 <span class="hero-confirmed-tag">LIVE QUOTE · CONFIRMED</span>
               </div>
             </div>
+            <details class="tech-details">
+              <summary>On-chain details</summary>
+              <dl id="techDetails">
+                <dt>Settlement asset</dt><dd id="techCollateral">—</dd>
+                <dt>Price source</dt><dd>Chainlink</dd>
+                <dt>Maximum fill (maker collateral)</dt><dd id="techMakerBudget">—</dd>
+                <dt>Network</dt><dd>Base mainnet</dd>
+                <dt>Order expiry</dt><dd id="techOrderExpiry">—</dd>
+              </dl>
+            </details>
           </div>
 
           <!-- Collapsible Other Offers Accordion -->

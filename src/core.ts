@@ -284,13 +284,22 @@ export function coverageGapDays(c: Candidate, spec: ProtectionSpec): number {
   return Math.max(0, spec.horizonDays - c.daysToExpiry);
 }
 
+/**
+ * Statically known ERC20 symbols for Base mainnet addresses this book has
+ * actually quoted collateral in. Shared as the seed for `_symCache` below AND
+ * exposed synchronously via `knownTokenSymbol()` for callers (e.g. the
+ * candidate-to-wire mapping) that need a symbol string but have no
+ * `ThetanutsClient` to resolve an unknown one on-chain.
+ */
+const KNOWN_TOKEN_SYMBOLS: Record<string, string> = {
+  '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': 'USDC',
+  '0x4e65fe4dba92790696d040ac24aa414708f5c0ab': 'aBasUSDC',
+  '0x4200000000000000000000000000000000000006': 'WETH',
+  '0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf': 'cbBTC',
+};
+
 /** ERC20 symbol, cached per token address. */
-const _symCache = new Map<string, string>([
-  ['0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', 'USDC'],
-  ['0x4e65fe4dba92790696d040ac24aa414708f5c0ab', 'aBasUSDC'],
-  ['0x4200000000000000000000000000000000000006', 'WETH'],
-  ['0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf', 'cbBTC'],
-]);
+const _symCache = new Map<string, string>(Object.entries(KNOWN_TOKEN_SYMBOLS));
 export async function tokenSymbol(client: ThetanutsClient, token: string): Promise<string> {
   const key = token.toLowerCase();
   if (!_symCache.has(key)) {
@@ -301,6 +310,18 @@ export async function tokenSymbol(client: ThetanutsClient, token: string): Promi
     }
   }
   return _symCache.get(key)!;
+}
+
+/**
+ * Pure, synchronous symbol lookup for tokens already known statically — no
+ * client, no RPC call, no await. Returns null for anything not in the static
+ * map; resolving those requires the async `tokenSymbol()` above. The live
+ * book only ever quotes aBasUSDC/USDC collateral (see the dollar-token
+ * filtering in `findCandidates`), so this covers the addresses callers will
+ * actually see in practice.
+ */
+export function knownTokenSymbol(token: string): string | null {
+  return KNOWN_TOKEN_SYMBOLS[token.toLowerCase()] ?? null;
 }
 
 /**

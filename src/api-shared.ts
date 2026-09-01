@@ -3,7 +3,7 @@
  * src/server.ts so they can be imported by the app/api route handlers and by
  * tests/wire.test.ts without pulling in Next.js or Node's http module.
  */
-import { coverageGapDays, impliedStrike, type Candidate, type ProtectionSpec } from './core';
+import { coverageGapDays, impliedStrike, knownTokenSymbol, type Candidate, type ProtectionSpec } from './core';
 import { badgeFor } from './presentation';
 import type { Candle } from './spot';
 
@@ -75,6 +75,14 @@ export function toWire(c: Candidate, spec: ProtectionSpec, isTopPick = false) {
     iv: c.greeks.iv ?? null,
     coverageGapDays: coverageGapDays(c, spec),
     makerBudget: c.makerBudget,
+    /**
+     * Human-readable collateral symbol (e.g. "aBasUSDC"), resolved
+     * synchronously from a static known-address map — toWire() has no
+     * ThetanutsClient to make the async on-chain symbol() call that
+     * tokenSymbol() would need. null for any token not in that map; the web
+     * UI falls back to the 'aBasUSDC' default the live book actually quotes.
+     */
+    collateralSymbol: knownTokenSymbol(c.collateralToken),
     /** The per-unit strike the user's stated quantity + total floor implies — what this candidate is being ranked against. */
     impliedStrike: target,
     /** Signed: positive = this strike is BELOW the user's floor (weaker protection); negative = above it (stronger, but pricier). For display. */

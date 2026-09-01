@@ -544,7 +544,14 @@ function renderCandidates() {
   document.getElementById('heroStrike').textContent = formatMoney(selected.strike, 0);
   document.getElementById('heroBadge').textContent = badgeText;
   document.getElementById('heroBadge').className = badgeClass;
-  document.getElementById('heroDetails').textContent = `${selected.daysToExpiry.toFixed(1)}d window · expires ${selected.expiryIso.slice(0,10)} · maximum fill ${formatMoney(selected.makerBudget, 0)}`;
+  document.getElementById('heroDetails').textContent =
+    `${selected.daysToExpiry.toFixed(1)}d window · expires ${selected.expiryIso.slice(0,10)}`;
+
+  // Nothing is removed — the technical facts move behind a disclosure so the
+  // payment step stops opening with aBasUSDC and maker collateral.
+  document.getElementById('techCollateral').textContent = selected.collateralSymbol || 'aBasUSDC';
+  document.getElementById('techMakerBudget').textContent = formatMoney(selected.makerBudget, 0);
+  document.getElementById('techOrderExpiry').textContent = selected.expiryIso.slice(0, 10);
 
   // The cost of full coverage, stated. Ranking now puts covering options first,
   // which surfaces a pricier option by default; showing the delta makes that a

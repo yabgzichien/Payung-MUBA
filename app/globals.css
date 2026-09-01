@@ -1367,6 +1367,22 @@
   .hist-progress-warn { background: var(--warn); }
   .hist-progress-danger { background: var(--danger); }
 
+  /* Past-protection status badges: an unclaimed/pending payout should read
+     as visibly different from a completed settlement, not just a different
+     label on the same neutral chip. (`.badge-chip.neutral` is also applied
+     on these spans, so these rules need to match its specificity to win.) */
+  .badge-chip.hist-status-expired-awaiting-settlement {
+    border-color: var(--warn-border);
+    background: var(--warn-bg);
+    color: var(--warn-text);
+  }
+
+  .badge-chip.hist-status-settled-itm {
+    border-color: var(--green-border);
+    background: var(--green-bg);
+    color: var(--green-text);
+  }
+
   .hist-progress-labels {
     display: flex;
     justify-content: space-between;

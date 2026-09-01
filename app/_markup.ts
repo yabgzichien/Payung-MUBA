@@ -322,6 +322,10 @@ export const BODY_HTML = `
       <div class="aside-chart-card">
         <svg id="expiryPayoffSvg" viewBox="0 0 404 130" style="width: 100%; height: auto; display: block;"></svg>
       </div>
+      <div class="gap-box">
+        <span class="flow-label" style="white-space: nowrap; padding-top: 2px;">AFTER EXPIRY</span>
+        <p class="verdict-body" id="settlementBody">Expiry → Settlement → Payout. If your floor pays out, settlement typically completes within about an hour of expiry — across every position we've measured, none has ever gotten stuck. We're still confirming the exact settlement mechanism with Thetanuts, so we won't promise a specific manual action; if a payout hasn't shown up a while after expiry, check your position on BaseScan or reach out to Thetanuts support.</p>
+      </div>
     </div>
 
     <!-- Section 3: Where every number came from (Provenance) -->

@@ -66,6 +66,33 @@ One core (`src/core.ts`) is the only module that touches Thetanuts. The CLI (`sr
 the HTTP API (`app/api/*/route.ts`), and the web UI (`app/`) are thin faces over it.
 Spec: [Payung_Spec.md](Payung_Spec.md) · Pitch & Q&A: [PROJECT.md](PROJECT.md)
 
+## MCP server
+
+Payung's tool registry (`src/tools.ts` — the same `get_spot`, `find_protection`, `quote_candidate`,
+`judge_candidate`, `payoff_at`, `list_positions`, `simulate_fill`, `propose_execution` set the agent
+pane calls) is also exposed as a standard MCP stdio server, so any MCP-speaking client (Claude
+Desktop, the MCP Inspector, etc.) can drive it directly:
+
+```bash
+npm run mcp                                          # start the stdio server directly
+npx @modelcontextprotocol/inspector npx tsx mcp/server.ts   # or drive it through the Inspector
+```
+
+Point a client at it by running `npx tsx mcp/server.ts` (or `npm run mcp`) as the command, with
+this repo's `.env` present so it can reach the live Base RPC. Every tool call is served by the
+exact same `ToolDef.run()` used by the agent and the watcher — one registry, three surfaces —
+so the MCP adapter inherits the same live pricing and the same safety filters instead of
+reimplementing them.
+
+**Why this isn't built on `@thetanuts-finance/mcp`:** that server exposes a generic surface over
+the Thetanuts orderbook that permits *writing* options — selling collateralized puts — which is
+the one action a Payung user must never take by accident; Payung only ever buys protection. This
+adapter instead wraps Payung's own registry, which has already applied the buyable-puts-only,
+correct-underlying, and dollar-collateral filters before any tool schema is generated, so those
+guarantees carry over for free. No tool in the registry — over MCP or otherwise — ever signs or
+sends a transaction: `propose_execution` is the terminal action, and it only hands back an
+unsigned proposal for the user's own wallet to review and sign.
+
 ## After the hackathon
 
 We plan to keep building this: roadmap is an autonomous re-hedge agent (watch a position,

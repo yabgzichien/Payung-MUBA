@@ -133,7 +133,7 @@ export async function runWatchCycle(opts: {
     // --auto: simulate first, always. Never send a fill that was not dry-run.
     await simulate(replacement.candidate, replacement.premiumUsd);
     report.rolls++;
-    report.alerts.push(`${summary}\n  Simulated OK. Executing under policy (max $${opts.policy.maxPremiumUsd}).`);
+    report.alerts.push(`${summary}\n  Simulated OK. (Live execution lands in a follow-up update — nothing was sent.)`);
     appendAudit({
       at: now.toISOString(), positionId: p.id, txHash: c.txHash, decision, policy: opts.policy,
       replacement: { strike: replacement.candidate.strike, expiryIso: replacement.candidate.expiry.toISOString(), premiumUsd: replacement.premiumUsd },

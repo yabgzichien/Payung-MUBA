@@ -39,14 +39,14 @@ async function api(path, body) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const json = await res.json();
+  const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
 }
 
 async function apiGet(path) {
   const res = await fetch(path);
-  const json = await res.json();
+  const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
 }
@@ -1660,14 +1660,177 @@ if (document.readyState === 'loading') {
 // and other pages don't render #agentForm.
 const agentSessionId = `s-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+function escapeHtml(s) {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Applied to already-escaped text, so the ** / ` delimiters below are the only
+// markup characters left unescaped to match against.
+function renderInlineMarkdown(escaped) {
+  return escaped
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+?)`/g, '<code>$1</code>');
+}
+
+const MD_TABLE_ROW_RE = /^\s*\|.*\|\s*$/;
+const MD_TABLE_SEP_RE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+const MD_BULLET_RE = /^\s*[-*]\s+(.*)$/;
+const MD_ORDERED_RE = /^\s*\d+\.\s+(.*)$/;
+
+function splitMarkdownTableRow(line) {
+  let cells = line.trim();
+  if (cells.startsWith('|')) cells = cells.slice(1);
+  if (cells.endsWith('|')) cells = cells.slice(0, -1);
+  return cells.split('|').map((c) => c.trim());
+}
+
+function renderMarkdownTable(lines) {
+  const header = splitMarkdownTableRow(lines[0]);
+  const rows = lines.slice(2).map(splitMarkdownTableRow);
+  const th = header.map((c) => `<th>${renderInlineMarkdown(escapeHtml(c))}</th>`).join('');
+  const trs = rows
+    .map((r) => `<tr>${r.map((c) => `<td>${renderInlineMarkdown(escapeHtml(c))}</td>`).join('')}</tr>`)
+    .join('');
+  return `<table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+/**
+ * Minimal, dependency-free markdown -> HTML for agent chat replies. The model
+ * writes plain markdown (tables, bold, lists) but the chat log was inserting
+ * it as a single text node, so pipes/asterisks showed up literally with no
+ * line breaks. Handles the subset the system prompt's tools actually produce;
+ * everything else falls through to escaped paragraphs.
+ */
+function renderAgentMarkdown(text) {
+  if (!text) return '';
+  const blocks = text.replace(/\r\n/g, '\n').split(/\n{2,}/);
+  return blocks
+    .map((block) => {
+      const lines = block.split('\n').filter((l) => l.length > 0);
+      if (!lines.length) return '';
+
+      if (lines.length >= 2 && MD_TABLE_ROW_RE.test(lines[0]) && MD_TABLE_SEP_RE.test(lines[1])) {
+        return renderMarkdownTable(lines);
+      }
+      if (lines.every((l) => MD_BULLET_RE.test(l))) {
+        const items = lines.map((l) => `<li>${renderInlineMarkdown(escapeHtml(l.match(MD_BULLET_RE)[1]))}</li>`).join('');
+        return `<ul>${items}</ul>`;
+      }
+      if (lines.every((l) => MD_ORDERED_RE.test(l))) {
+        const items = lines.map((l) => `<li>${renderInlineMarkdown(escapeHtml(l.match(MD_ORDERED_RE)[1]))}</li>`).join('');
+        return `<ol>${items}</ol>`;
+      }
+      return `<p>${lines.map((l) => renderInlineMarkdown(escapeHtml(l))).join('<br>')}</p>`;
+    })
+    .join('');
+}
+
 function appendAgentLine(who, text, tone) {
   const el = document.createElement('div');
   el.style.cssText = `font-size:13.5px; line-height:1.55; color:${tone || 'inherit'};`;
   const b = document.createElement('b');
   b.textContent = who;
-  el.append(b, ' ', document.createTextNode(text));
+  const body = document.createElement('div');
+  body.className = 'agent-md';
+  body.innerHTML = renderAgentMarkdown(text);
+  el.append(b, body);
   document.getElementById('agentLog').appendChild(el);
   el.scrollIntoView({ block: 'nearest' });
+}
+
+/**
+ * Auto-navigate the main pipeline to the confirm step when the agent calls
+ * propose_execution. The proposal carries the candidateId the agent picked, so
+ * we can select exactly that candidate rather than defaulting to index 0.
+ *
+ * Flow:
+ * 1. Populate the form fields from the proposal's strike/expiry hints so the
+ *    spec roughly matches what the agent was looking at.
+ * 2. If candidates are already loaded for the same spec, just select the right
+ *    one by candidateId and scroll.
+ * 3. Otherwise, call findFloors() (which populates state.candidates), then
+ *    select the matching candidate and scroll to the confirm step.
+ */
+async function applyAgentProposal(proposal) {
+  if (!proposal || proposal.handoff !== 'proposal') return;
+
+  // Show a banner in the agent log so the transition is explained inline.
+  const banner = document.createElement('div');
+  banner.style.cssText = [
+    'margin-top:8px; padding:8px 12px; border-radius:6px;',
+    'background:var(--green-bg); border:1px solid var(--green-border);',
+    'font-size:13px; color:var(--green-text); display:flex; align-items:center; gap:8px;',
+  ].join('');
+  banner.innerHTML = '<span style="font-size:16px;">↓</span><span>Taking you to the confirm screen now…</span>';
+  document.getElementById('agentLog').appendChild(banner);
+  banner.scrollIntoView({ block: 'nearest' });
+
+  // Select the right candidate by id if already loaded, otherwise fetch.
+  const candidateId = proposal.candidateId;
+
+  async function selectAndScroll() {
+    const idx = state.candidates.findIndex(c => c.id === candidateId);
+    if (idx >= 0) {
+      selectCandidate(idx);
+    }
+    // Scroll the main pipeline into view so the user sees the confirm step.
+    const step3 = document.getElementById('step3');
+    if (step3) step3.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  if (state.candidates.length > 0 && state.candidates.some(c => c.id === candidateId)) {
+    // Candidates already loaded — just select and scroll.
+    await selectAndScroll();
+  } else {
+    // Need to (re-)fetch candidates. findFloors() sets state.candidates when
+    // it resolves, so we await it, then pick the right one.
+    await findFloors();
+    await selectAndScroll();
+  }
+}
+
+/**
+ * Sync the top form to the spec the chat agent resolved via find_protection,
+ * then run the exact same /api/candidates query the manual "Find real
+ * offers" button does. This is what makes the chat surface show numbers from
+ * the same deterministic card panel the form uses, instead of the model
+ * describing candidates in its own prose.
+ */
+async function applyAgentSpec(spec) {
+  if (!spec) return;
+
+  ['asset', 'quantity', 'floor', 'horizonDays'].forEach(clearFieldFlag);
+  if (spec.asset != null) {
+    document.getElementById('asset').value = spec.asset;
+    document.getElementById('unitFloorLabel').textContent = `FLOOR · PER ${spec.asset}`;
+  }
+  if (spec.quantity != null) document.getElementById('amount').value = spec.quantity;
+  if (spec.floorTotalUsd != null) document.getElementById('floor').value = spec.floorTotalUsd;
+  if (spec.horizonDays != null) document.getElementById('days').value = spec.horizonDays;
+  if (spec.quantity > 0 && spec.floorTotalUsd != null) {
+    document.getElementById('unitFloor').value = Number((spec.floorTotalUsd / spec.quantity).toFixed(2));
+  }
+
+  restateSentence();
+  drawUnifiedChart();
+
+  const banner = document.createElement('div');
+  banner.style.cssText = [
+    'margin-top:8px; padding:8px 12px; border-radius:6px;',
+    'background:var(--green-bg); border:1px solid var(--green-border);',
+    'font-size:13px; color:var(--green-text); display:flex; align-items:center; gap:8px;',
+  ].join('');
+  banner.innerHTML = '<span style="font-size:16px;">↓</span><span>Live offers for this below…</span>';
+  document.getElementById('agentLog').appendChild(banner);
+  banner.scrollIntoView({ block: 'nearest' });
+
+  await findFloors();
+  document.getElementById('step2')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 document.getElementById('agentForm')?.addEventListener('submit', async (e) => {
@@ -1686,14 +1849,39 @@ document.getElementById('agentForm')?.addEventListener('submit', async (e) => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text, sessionId: agentSessionId, signerAddress: walletState.address || null }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     thinking.remove();
-    appendAgentLine('Payung', data.reply || data.error || 'No answer.');
+    if (!res.ok) {
+      appendAgentLine('Payung', data.error || `Agent service error (${res.status})`, 'oklch(0.7 0.1 30)');
+      return;
+    }
+    appendAgentLine('Payung', data.reply || 'No answer.');
     if (data.guardBlocked && data.guardBlocked.length) {
-      appendAgentLine('Guard', `blocked ungrounded numbers: ${data.guardBlocked.flat().join(', ')}`, 'var(--amber, oklch(0.8 0.12 80))');
+      const nums = data.guardBlocked.flat();
+      const list = nums.join(', ');
+      const subject = nums.length === 1 ? `the number ${list}` : `the numbers ${list}`;
+      appendAgentLine(
+        'Guard',
+        `Blocked a draft reply for guessing at ${subject} instead of using a real price or order — Payung only shows numbers confirmed by live data or by what you typed, so it made the assistant answer again with those.`,
+        'var(--amber, oklch(0.8 0.12 80))'
+      );
+    }
+    // When find_protection ran this turn, sync the form to the resolved spec
+    // and show the same live-offers card panel the manual form uses, so
+    // candidate numbers reach the user from that deterministic render path
+    // rather than the model's own prose.
+    if (data.spec) {
+      await applyAgentSpec(data.spec);
+    }
+    // When the agent has selected a candidate and prepared a proposal, auto-
+    // navigate the user to the confirm step so they don't have to click through
+    // the main form manually.
+    if (data.proposal) {
+      await applyAgentProposal(data.proposal);
     }
   } catch (err) {
     thinking.remove();
     appendAgentLine('Payung', `Could not reach the agent: ${err.message}`, 'oklch(0.7 0.1 30)');
   }
 });
+

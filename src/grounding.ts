@@ -23,7 +23,8 @@ export type NumberToken = { raw: string; value: number; index: number };
 export function maskNonNumeric(text: string): string {
   return text
     .replace(/0x[0-9a-fA-F]+/g, (m) => ' '.repeat(m.length))
-    .replace(/\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?/g, (m) => ' '.repeat(m.length));
+    .replace(/\b[0-9a-fA-F]{6,}-[0-9a-fA-F-]+\b/g, (m) => ' '.repeat(m.length))
+    .replace(/\d{4}[-\u2010-\u2015]\d{2}[-\u2010-\u2015]\d{2}(?:[T\s][\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?/g, (m) => ' '.repeat(m.length));
 }
 
 /**
@@ -37,10 +38,22 @@ export function maskNonNumeric(text: string): string {
  * with the sign preceded by whitespace, punctuation, or nothing (start of
  * string) — never glued to a letter or digit.
  */
+export function normalizeTypography(text: string): string {
+  return text
+    .replace(/[\u202F\u00A0\u2009\u200A]/g, (m, offset, str) => {
+      const prev = str[offset - 1];
+      const next = str[offset + m.length];
+      if (prev && /\d/.test(prev) && next && /\d/.test(next)) return '';
+      return ' ';
+    })
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2212]/g, '-');
+}
+
 const NUMBER_PATTERN = /(?<!\w)-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<!\w)-?\d+(?:\.\d+)?/g;
 
 export function extractNumbers(text: string): NumberToken[] {
-  const masked = maskNonNumeric(text);
+  const norm = normalizeTypography(text);
+  const masked = maskNonNumeric(norm);
   const out: NumberToken[] = [];
   for (const m of masked.matchAll(NUMBER_PATTERN)) {
     const raw = m[0].replace(/,/g, '');

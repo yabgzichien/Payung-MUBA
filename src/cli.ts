@@ -25,7 +25,7 @@ import {
 } from './core';
 import { judgeQuote } from './judgment';
 import { ensureDollarCollateral } from './aave';
-import { parseIntent, gonkaLlm } from './intent';
+import { parseIntent, groqLlm } from './intent';
 import { commitmentFor, writeCommitment } from './commitments';
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -214,7 +214,7 @@ async function main() {
       // npm run ask -- "I have 1 ETH and need it worth at least $2,300 in two weeks"
       const text = args.join(' ');
       if (!text) { console.log('usage: npm run ask -- "your constraint in plain words"'); return; }
-      const spec = await parseIntent(text, gonkaLlm());
+      const spec = await parseIntent(text, groqLlm());
       console.log(`\nParsed: protect ${spec.quantity} ${spec.asset} at a $${spec.floorTotalUsd} total floor for ${spec.horizonDays} days (implied strike $${impliedStrike(spec).toFixed(2)})\n`);
       const candidates = await findCandidates(spec);
       if (!candidates.length) {
@@ -228,12 +228,12 @@ async function main() {
 
     case 'agent': {
       const { newAgentState, runAgentTurn } = await import('./agent.js');
-      const { gonkaChat } = await import('./chat.js');
+      const { groqChat } = await import('./chat.js');
       const { TOOLS } = await import('./tools.js');
       const readline = await import('node:readline/promises');
 
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      const chat = gonkaChat();
+      const chat = groqChat();
       let state = newAgentState();
       // Simulation needs an address; reuse the burner's if one is configured.
       try {

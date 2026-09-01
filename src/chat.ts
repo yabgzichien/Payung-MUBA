@@ -21,21 +21,23 @@ export type ChatResponse = { content: string | null; toolCalls: ToolCall[] };
 
 export type ChatClient = (messages: ChatMessage[], tools: unknown[]) => Promise<ChatResponse>;
 
-export function gonkaChat(): ChatClient {
-  const base = process.env.GONKA_BASE_URL ?? 'https://api.gonkarouter.io/v1';
-  const key = process.env.GONKA_API_KEY;
-  const model = process.env.GONKA_MODEL ?? 'deepseek-ai/DeepSeek-V4-Flash-0731';
-  if (!key) throw new Error('GONKA_API_KEY missing in .env — see .env.example.');
+import { callGroqChatCompletions } from './groq';
+
+export function groqChat(): ChatClient {
+  const base = process.env.GROQ_BASE_URL ?? process.env.GONKA_BASE_URL ?? 'https://api.groq.com/openai/v1';
+  const key = process.env.GROQ_API_KEY ?? process.env.GONKA_API_KEY;
+  const model = process.env.GROQ_MODEL ?? process.env.GONKA_MODEL ?? 'openai/gpt-oss-120b';
+  if (!key) throw new Error('GROQ_API_KEY missing in .env — see .env.example.');
 
   return async (messages, tools) => {
-    const res = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model, temperature: 0, messages, tools, tool_choice: 'auto' }),
+    const json = await callGroqChatCompletions({
+      base,
+      key,
+      body: { model, temperature: 0, messages, tools, tool_choice: 'auto' },
     });
-    if (!res.ok) throw new Error(`Gonka Router ${res.status}: ${await res.text()}`);
-    const json: any = await res.json();
     const msg = json.choices?.[0]?.message ?? {};
     return { content: msg.content ?? null, toolCalls: msg.tool_calls ?? [] };
   };
 }
+
+export const gonkaChat = groqChat;

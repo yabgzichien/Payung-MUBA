@@ -21,6 +21,7 @@ import { judgeQuote } from './judgment';
 import { fetchSpot } from './spot';
 import { shapeProtection } from './positions';
 import { candidateId, toWire, CACHE_MAX_AGE_MS } from './api-shared';
+import { totalFromUnit } from './spec';
 
 export type ToolResult =
   | { ok: true; data: unknown; numbers: number[] }
@@ -83,6 +84,39 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'calculate_floor',
+    description:
+      'Deterministically compute the total USD floor value for a holding. ' +
+      'Call this whenever you know the quantity the user holds and a per-unit floor price ' +
+      '(either stated by the user or returned by get_spot), but do NOT yet have the total. ' +
+      'Never do this arithmetic yourself — call this tool instead.',
+    readOnly: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        quantity: { type: 'number', description: 'How much of the asset the user holds.' },
+        unitFloorUsd: { type: 'number', description: 'The per-unit floor price in USD (e.g. $2,300 per ETH).' },
+      },
+      required: ['quantity', 'unitFloorUsd'],
+    },
+    async run({ quantity, unitFloorUsd }: { quantity: number; unitFloorUsd: number }) {
+      const q = Number(quantity);
+      const u = Number(unitFloorUsd);
+      if (!Number.isFinite(q) || q <= 0) {
+        return { ok: false as const, error: `quantity must be a positive number, got: ${JSON.stringify(quantity)}` };
+      }
+      if (!Number.isFinite(u) || u <= 0) {
+        return { ok: false as const, error: `unitFloorUsd must be a positive number, got: ${JSON.stringify(unitFloorUsd)}` };
+      }
+      const floorTotalUsd = totalFromUnit(u, q);
+      return {
+        ok: true as const,
+        data: { quantity: q, unitFloorUsd: u, floorTotalUsd },
+        numbers: nums(q, u, floorTotalUsd),
+      };
+    },
+  },
+  {
     name: 'find_protection',
     description:
       'Find live, currently-fillable put options that put a floor under a holding. ' +
@@ -124,7 +158,7 @@ export const TOOLS: ToolDef[] = [
         },
         numbers: [
           ...wire.flatMap((w) => nums(w.strike, w.daysToExpiry, w.pricePerContract, w.coverageGapDays, w.makerBudget, w.impliedStrike, w.pctFromImpliedStrike, w.iv)),
-          ...nums(choice.premiumDelta, choice.gapDays, choice.surplusDays),
+          ...nums(spec.quantity, spec.floorTotalUsd, spec.horizonDays, choice.premiumDelta, choice.gapDays, choice.surplusDays),
         ],
       };
     },

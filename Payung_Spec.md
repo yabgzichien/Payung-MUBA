@@ -144,3 +144,4 @@ A: It depends on the protection goal:
 - Which specific expiries/strikes to default to when several candidates tie on fit
 - Exact UX for the Aave deposit step (in-app vs. "go deposit first" instruction)
 - Whether the autonomous re-hedge rule (Track 02's "autonomous hedging agent" idea) ships for the hackathon or is described as a roadmap item
+- **Show the estimated gas fee in the UI, as its own line item alongside the premium, plus a combined total.** Consistent with FR5/FR6 and the "no fabricated numbers" rule — gas is an estimate pulled from `callStaticFillOrder()`'s simulation, not a guess, and should be labeled as an estimate since actual gas can vary slightly at confirmation time.

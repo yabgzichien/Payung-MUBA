@@ -12,33 +12,34 @@
 // and a value import of core.ts would pull dotenv + the Thetanuts SDK into
 // this module and into the zero-network intent tests (HANDOFF.md rule 1).
 import { impliedStrike, totalFromUnit, type ProtectionSpec } from './spec';
+import { callGroqChatCompletions } from './groq';
 
 export type LlmClient = (system: string, user: string) => Promise<string>;
 
-/** OpenAI-compatible chat-completions transport for Gonka Router. */
-export function gonkaLlm(): LlmClient {
-  const base = process.env.GONKA_BASE_URL ?? 'https://api.gonkarouter.io/v1';
-  const key = process.env.GONKA_API_KEY;
-  const model = process.env.GONKA_MODEL ?? 'moonshotai/Kimi-K2.6';
-  if (!key) throw new Error('GONKA_API_KEY missing in .env — see .env.example.');
+/** OpenAI-compatible chat-completions transport for Groq. */
+export function groqLlm(): LlmClient {
+  const base = process.env.GROQ_BASE_URL ?? process.env.GONKA_BASE_URL ?? 'https://api.groq.com/openai/v1';
+  const key = process.env.GROQ_API_KEY ?? process.env.GONKA_API_KEY;
+  const model = process.env.GROQ_MODEL ?? process.env.GONKA_MODEL ?? 'openai/gpt-oss-120b';
+  if (!key) throw new Error('GROQ_API_KEY missing in .env — see .env.example.');
   return async (system, user) => {
-    const res = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      body: JSON.stringify({
+    const json = await callGroqChatCompletions({
+      base,
+      key,
+      body: {
         model,
         temperature: 0,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
         ],
-      }),
+      },
     });
-    if (!res.ok) throw new Error(`Gonka Router ${res.status}: ${await res.text()}`);
-    const json: any = await res.json();
     return json.choices?.[0]?.message?.content ?? '';
   };
 }
+
+export const gonkaLlm = groqLlm;
 
 const SYSTEM = `You translate a user's crypto-protection request into JSON. Output ONLY a JSON object, nothing else.
 Fields:

@@ -239,6 +239,9 @@ No `.env`/`PRIVATE_KEY` has existed in any automated test environment. `README.m
 ### 2. Minor, deferred items
 - `dollarTokens()` address allowlist is small (USDC + aBasUSDC on Base mainnet) and falls back to a `symbol().endsWith('USDC')` heuristic for tokens not in the list.
 
+### 3. Gas fee is not shown in the UI — TODO
+`web/index.html` currently displays only the premium. Add the estimated gas fee (available from the `callStaticFillOrder()` simulation) as its own line item next to the premium, plus a combined total, and label it as an estimate since actual gas can vary slightly by confirmation time. This keeps the display consistent with the project's "no fabricated numbers, show every real cost" rule (design rule #3).
+
 ---
 
 ## Design rules that must never be violated

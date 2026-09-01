@@ -1,9 +1,9 @@
 // scripts/eval-live.ts
-// Hits Gonka for real and reports a pass rate on natural-language phrasing,
+// Hits Groq for real and reports a pass rate on natural-language phrasing,
 // including Bahasa Malaysia — the product is named for a Malay word and its
 // first users are likely to type in it.
 import 'dotenv/config';
-import { gonkaLlm, parsePartialIntent } from '../src/intent.js';
+import { groqLlm, parsePartialIntent } from '../src/intent.js';
 
 const SENTENCES: { text: string; asset: string; quantity: number; horizonDays: number }[] = [
   { text: 'I have 1 ETH and need it worth at least $2,300 in two weeks', asset: 'ETH', quantity: 1, horizonDays: 14 },
@@ -14,7 +14,7 @@ const SENTENCES: { text: string; asset: string; quantity: number; horizonDays: n
 ];
 
 async function main() {
-  const llm = gonkaLlm();
+  const llm = groqLlm();
   let pass = 0;
   for (const s of SENTENCES) {
     try {

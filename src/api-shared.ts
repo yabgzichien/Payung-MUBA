@@ -130,7 +130,12 @@ export async function withErrorHandling(fn: () => Promise<Response>): Promise<Re
   try {
     return await fn();
   } catch (e: any) {
-    const status = e instanceof ClientError ? 400 : 500;
+    const status =
+      e instanceof ClientError
+        ? 400
+        : typeof e?.status === 'number' && e.status >= 400 && e.status < 600
+        ? e.status
+        : 500;
     return new Response(jsonSafe({ error: e?.shortMessage || e?.message || String(e) }), {
       status,
       headers: { 'content-type': 'application/json' },

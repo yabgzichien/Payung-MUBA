@@ -9,6 +9,22 @@ export async function POST(req: Request) {
   return withErrorHandling(async () => {
     const { id, spendUsdc, takerAddress } = await req.json();
     const { candidate } = getCached(String(id));
+
+    // Hard, unconditional safety check — never trust the cache alone. It is
+    // populated exclusively from filterCandidates()'s buy-side-only output
+    // today, but this route must not depend on that staying true forever: a
+    // stale entry, a future candidate source, or a bug upstream could hand it
+    // a sell-side candidate. Preparing a transaction for one means the taker
+    // posts contracts x strike as real collateral to WRITE a naked put — the
+    // one thing a Payung user must never do by accident. Refuse outright.
+    if (!candidate.takerIsBuyer) {
+      throw new ClientError(
+        'This candidate would make you the SELLER (writer) of the option, not the buyer of ' +
+        'protection. Payung only ever prepares buy-side trades — refusing to build this ' +
+        'transaction. Search again for a fresh candidate.'
+      );
+    }
+
     const client = readClient();
     const q = await quote(candidate, parseSpend(spendUsdc), client);
     const dec = await collateralDecimals(client, candidate.collateralToken);

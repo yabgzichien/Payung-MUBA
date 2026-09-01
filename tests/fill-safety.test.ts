@@ -131,4 +131,18 @@ describe('execute() paid-amount verification', () => {
     });
     await expect(execute(c, 10, client)).rejects.toThrow(/simulation failed/i);
   });
+
+  it('refuses to execute a sell-side (takerIsBuyer: false) candidate, unconditionally, before touching the network', async () => {
+    // Real incident: a candidate reached a caller with takerIsBuyer false and
+    // was executed for real — the taker posted contracts x strike as
+    // collateral to WRITE a naked put, not buy protection. filterCandidates()
+    // should have excluded it, but execute() must not TRUST that every caller
+    // routed through filterCandidates() — this is the last line of defense.
+    const c = makeCandidate({ collateralToken: ABAS_USDC, takerIsBuyer: false, yourSide: 'you sell the option' });
+    const client = fakeClient();
+    await expect(execute(c, 10, client)).rejects.toThrow(/seller/i);
+    // Confirm the guard fires BEFORE any network call — fakeClient's
+    // callStaticFillOrder/fillOrder would both succeed if reached, so a
+    // resolved promise here would mean the guard was bypassed, not passed.
+  });
 });

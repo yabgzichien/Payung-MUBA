@@ -550,6 +550,21 @@ export async function execute(
   spendUsdc: number,
   client = writeClient()
 ): Promise<{ hash: string; explorer: string; receipt: any; paidUnits: bigint; paidUsd: number | null }> {
+  // Hard, unconditional safety check — never trust a caller to have already
+  // filtered this. filterCandidates() already excludes non-buy-side orders,
+  // but this function must not rely on every caller routing through it: a
+  // stale cache entry, a future caller, or a bug anywhere upstream could hand
+  // this a sell-side candidate. If takerIsBuyer is false, executing means
+  // WRITING a naked put — posting contracts x strike as real collateral —
+  // which is the one thing Payung must never do by accident. Refuse outright.
+  if (!candidate.takerIsBuyer) {
+    throw new Error(
+      'Refusing to execute: this candidate has the taker as the SELLER (writer) of the option, ' +
+      'not the buyer. Payung only ever buys protection, never writes options — this should be ' +
+      'impossible for a candidate that went through filterCandidates(). Treat this as a bug, not ' +
+      'a valid trade, and do not retry with the same candidate id.'
+    );
+  }
   const dec = await collateralDecimals(client, candidate.collateralToken);
   if (dec !== USDC_DECIMALS) {
     // Every code path below assumes 6-decimal dollar collateral (USDC_DECIMALS).

@@ -1,0 +1,20 @@
+[
+  { "name": "total floor, plain",
+    "raw": { "asset": "ETH", "quantity": 1, "floorValue": 2300, "floorMode": "total", "horizonDays": 14 },
+    "expect": { "asset": "ETH", "quantity": 1, "floorTotalUsd": 2300, "horizonDays": 14 } },
+  { "name": "per-unit floor is multiplied in code, not by the model",
+    "raw": { "asset": "BTC", "quantity": 2, "floorValue": 62000, "floorMode": "perUnit", "horizonDays": 30 },
+    "expect": { "asset": "BTC", "quantity": 2, "floorTotalUsd": 124000, "horizonDays": 30 } },
+  { "name": "missing horizon is highlighted, not invented",
+    "raw": { "asset": "ETH", "quantity": 1, "floorValue": 2300, "floorMode": "total", "horizonDays": null },
+    "expectMissing": ["horizonDays"] },
+  { "name": "ambiguous floor mode becomes a field error",
+    "raw": { "asset": "ETH", "quantity": 1, "floorValue": 2300, "floorMode": null, "horizonDays": 14 },
+    "expectFieldError": "floor" },
+  { "name": "unsupported asset is a field error, not a whole-parse failure",
+    "raw": { "asset": "SOL", "quantity": 10, "floorValue": 1000, "floorMode": "total", "horizonDays": 7 },
+    "expectFieldError": "asset" },
+  { "name": "implausible strike is rejected",
+    "raw": { "asset": "ETH", "quantity": 100000000, "floorValue": 100, "floorMode": "total", "horizonDays": 7 },
+    "expectFieldError": "floor" }
+]

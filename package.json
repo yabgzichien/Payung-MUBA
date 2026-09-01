@@ -15,6 +15,7 @@
     "ask": "tsx src/cli.ts ask",
     "agent": "tsx src/cli.ts agent",
     "watch": "tsx src/cli.ts watch",
+    "eval:live": "tsx scripts/eval-live.ts",
     "dev": "next dev -p 8787",
     "build": "next build",
     "start": "next start -p 8787",

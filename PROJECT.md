@@ -171,6 +171,7 @@ The LLM (via Gonka Router, OpenAI-compatible) is only ever used to translate a s
 - **Buyable-put collateral, re-verified during this hardening pass:** the live book quoted `aBasUSDC` (`0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB`) for buyable puts. `findCandidates()` accepts any dollar-denominated collateral (USDC or aBasUSDC) discovered from the live book by symbol — never a hardcoded address — and the execute path auto-deposits USDC into Aave when an order needs `aBasUSDC` (a genuine positive: idle collateral earns Aave yield while it sits).
 - **`callStaticFillOrder()` simulates the real transaction for free** — build and test the entire flow without spending anything; only the final, on-camera trade should be a real `fillOrder()` call.
 - Minimum viable real trade: **~$10 USDC**, confirmed via `previewFillOrder()` against a live order.
+- **NL intent parsing, live against Gonka Router**: `npm run eval:live` (`scripts/eval-live.ts`) sent 5 natural-language protection requests — English and Bahasa Malaysia — through `parsePartialIntent`. **4/5 passed** (asset, quantity, and horizon all matched); the one non-pass was a transient Gonka Router 502 (Cloudflare bad-gateway on their edge, not a parsing error) on a retry-worthy request, not a wrong extraction. The offline, network-free intent and grounding evals (`tests/eval/intent-eval.test.ts`, `tests/eval/grounding-eval.test.ts`) are the ones that gate CI.
 
 ---
 

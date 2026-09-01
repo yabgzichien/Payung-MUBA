@@ -11,8 +11,10 @@ Built for **MUBA Hacks 2026** — Thetanuts Track 01 (SDK Product) and Track 02 
 
 ## Proof (Track 02 bar: at least one real trade against live pricing)
 
-- Transaction: _[run the demo runbook's "Days before" checklist with a funded burner wallet, then paste the BaseScan URL here]_
-- Paid: _[paste the "you paid $X" figure from the fill receipt's Transfer logs here — this is also the buyer's max loss]_
+- Transaction: [`0x616bafff…ab273bc`](https://basescan.org/tx/0x616bafff6255ff448d71feff9e0ab743f94bdd41c3d9d04941046ef92ab273bc) — Base mainnet, block 50732577
+- Put: 0.000499 ETH protection, $2,200 strike, expires 2026-09-25
+- Paid: **$0.004704** (from the fill receipt's own Transfer logs — this is also the buyer's max loss)
+- Verified against the option contract's own `buyer()`/`seller()` view functions directly, not just the emitted event: the connected wallet (`0x22955CE0…21822a8`) holds the buyer side.
 
 ## Why the options are load-bearing
 

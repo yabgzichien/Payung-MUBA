@@ -57,3 +57,13 @@ export function writeCommitment(c: Commitment, dir = DEFAULT_DIR): void {
   const all = readCommitments(dir).filter((x) => x.txHash !== c.txHash);
   writeFileSync(join(dir, FILE), JSON.stringify([...all, c], null, 2));
 }
+
+/** Advance the counter decideRoll checks against maxRolls. No-op if unknown. */
+export function incrementRolls(txHash: string, dir = DEFAULT_DIR): void {
+  const all = readCommitments(dir);
+  const found = all.find((c) => c.txHash === txHash);
+  if (!found) return;
+  found.rollsUsed += 1;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, FILE), JSON.stringify(all, null, 2));
+}

@@ -9,10 +9,10 @@
  */
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { readCommitments, deadlineDaysLeft, DEFAULT_DIR, type Commitment } from './commitments';
+import { readCommitments, deadlineDaysLeft, incrementRolls, DEFAULT_DIR, type Commitment } from './commitments';
 import { decideRoll, type RollDecision, type RollPolicy } from './policy';
 import { shapeProtection, type ShapedPosition } from './positions';
-import { readClient, findCandidates, quote, simulate, type Candidate } from './core';
+import { readClient, findCandidates, quote, simulate, execute, type Candidate } from './core';
 
 export type AuditEntry = {
   at: string;
@@ -132,12 +132,14 @@ export async function runWatchCycle(opts: {
 
     // --auto: simulate first, always. Never send a fill that was not dry-run.
     await simulate(replacement.candidate, replacement.premiumUsd);
+    const receipt = await execute(replacement.candidate, replacement.premiumUsd);
+    incrementRolls(c.txHash);
     report.rolls++;
-    report.alerts.push(`${summary}\n  Simulated OK. (Live execution lands in a follow-up update — nothing was sent.)`);
+    report.alerts.push(`${summary}\n  Rolled. ${receipt.explorer}`);
     appendAudit({
       at: now.toISOString(), positionId: p.id, txHash: c.txHash, decision, policy: opts.policy,
       replacement: { strike: replacement.candidate.strike, expiryIso: replacement.candidate.expiry.toISOString(), premiumUsd: replacement.premiumUsd },
-      simulated: true, note: 'auto mode — execution performed by the CLI caller',
+      simulated: true, executedTxHash: receipt.hash, note: 'auto mode — executed under policy',
     });
   }
 

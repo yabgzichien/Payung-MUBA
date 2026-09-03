@@ -7,6 +7,7 @@ import { useProtectionFlow } from '../protect/_lib/FlowState';
 import { fetchPositions, fetchSpotPrice, fetchPreciseCommitment, fetchPrepareCancel } from '../protect/_lib/api';
 import { hasInjectedWallet, getSigner, sendAndWait, describeWalletError } from '../protect/_lib/wallet';
 import type { ShapedPosition, PreciseCommitmentWire } from '../protect/_lib/types';
+import { contracts, usd, usdWhole } from '../protect/_lib/format';
 import ui from '../protect/_lib/ui.module.css';
 import styles from './page.module.css';
 
@@ -19,7 +20,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function MyProtectionPage() {
-  const { wallet, connectWallet } = useProtectionFlow();
+  const { wallet, connectWallet, safeAddress } = useProtectionFlow();
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -27,6 +28,7 @@ export default function MyProtectionPage() {
   const [positionsError, setPositionsError] = useState<string | null>(null);
   const [spot, setSpot] = useState<number | null>(null);
   const [precise, setPrecise] = useState<PreciseCommitmentWire | null>(null);
+  const [preciseError, setPreciseError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
@@ -37,12 +39,40 @@ export default function MyProtectionPage() {
       setPositions(res.protections);
       setPositionsError(res.protectionsError);
       setLoading(false);
+      /**
+       * Read the asset from the RESOLVED positions. This used to read the
+       * `positions` state variable in the same tick that kicked off the fetch
+       * filling it, so it was always [] and always fell back to 'ETH' — a BTC
+       * holder saw an ETH price under a "BTC price" label.
+       */
+      const asset = res.protections.find((p) => p.underlying)?.underlying;
+      fetchSpotPrice(asset === 'BTC' ? 'BTC' : 'ETH').then(setSpot);
     });
-    fetchPreciseCommitment(wallet.address).then(setPrecise).catch(() => setPrecise(null));
-    const asset = positions.find((p) => p.underlying)?.underlying;
-    fetchSpotPrice((asset as 'ETH' | 'BTC') ?? 'ETH').then(setSpot);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallet.address]);
+
+  /**
+   * Commitments are keyed on-chain by SAFE address, not by the owner's EOA.
+   * This used to pass wallet.address, so module.commitments() always returned
+   * an empty struct and the Precise Protection panel could never render — and
+   * the 500 from an unconfigured module was swallowed by a bare .catch().
+   */
+  useEffect(() => {
+    if (!safeAddress) {
+      setPrecise(null);
+      setPreciseError(null);
+      return;
+    }
+    fetchPreciseCommitment(safeAddress)
+      .then((c) => {
+        setPrecise(c);
+        setPreciseError(null);
+      })
+      .catch((e) => {
+        setPrecise(null);
+        setPreciseError(e instanceof Error ? e.message : String(e));
+      });
+  }, [safeAddress]);
 
   async function handleConnect() {
     setConnecting(true);
@@ -67,7 +97,7 @@ export default function MyProtectionPage() {
       const refreshed = await fetchPreciseCommitment(precise.safe);
       setPrecise(refreshed);
     } catch (e) {
-      setCancelError(e instanceof Error ? e.message : describeWalletError(e));
+      setCancelError(describeWalletError(e));
     } finally {
       setCancelling(false);
     }
@@ -132,7 +162,7 @@ export default function MyProtectionPage() {
                     </span>
                   </div>
                   <div className={styles.row}>
-                    <span className={styles.rowLabel}>Protection floor</span>
+                    <span className={styles.rowLabel}>Protected price</span>
                     <span className={[styles.rowValue, styles.rowValueGold].join(' ')}>
                       {active.strike ? `$${active.strike.toLocaleString()}` : '—'}
                     </span>
@@ -148,18 +178,18 @@ export default function MyProtectionPage() {
                       <div
                         className={styles.expiryBarFill}
                         style={{
-                          width: `${(
-                            100 -
+                          width: '100%',
+                          transform: `scaleX(${(
+                            1 -
                             Math.min(
-                              100,
+                              1,
                               Math.max(
                                 0,
-                                ((Date.now() / 1000 - active.entryTimestamp) /
-                                  (active.expiryTimestamp - active.entryTimestamp)) *
-                                  100,
+                                (Date.now() / 1000 - active.entryTimestamp) /
+                                  (active.expiryTimestamp - active.entryTimestamp),
                               ),
                             )
-                          ).toFixed(1)}%`,
+                          ).toFixed(3)})`,
                         }}
                       />
                     </div>
@@ -183,7 +213,7 @@ export default function MyProtectionPage() {
               <h2 className={styles.sectionTitle}>Protection at a glance</h2>
               <div className={styles.statsRow}>
                 <div className={styles.statCell}>
-                  <p className={styles.statLabel}>Protection floor</p>
+                  <p className={styles.statLabel}>Protected price</p>
                   <p className={[styles.statValue, styles.statValueGold].join(' ')}>
                     {active.strike ? `$${active.strike.toLocaleString()}` : '—'}
                   </p>
@@ -216,6 +246,15 @@ export default function MyProtectionPage() {
             </>
           )}
 
+          {preciseError && (
+            <>
+              <h2 className={styles.sectionTitle}>Precise Protection</h2>
+              <div className={ui.errorBox}>
+                Couldn&apos;t read your automated protection: {preciseError}
+              </div>
+            </>
+          )}
+
           {precise && (
             <>
               <h2 className={styles.sectionTitle}>Precise Protection</h2>
@@ -224,40 +263,68 @@ export default function MyProtectionPage() {
                   <div className={styles.row}>
                     <span className={styles.rowLabel}>Status</span>
                     <span className={[styles.rowValue, precise.active ? styles.rowValueAccent : styles.rowValueWarn].join(' ')}>
-                      {precise.active ? 'Active — auto-rolling' : 'Cancelled'}
+                      {precise.active ? 'Active (auto-rolling)' : 'Cancelled'}
+                    </span>
+                  </div>
+                  <div className={styles.row}>
+                    <span className={styles.rowLabel}>Target protected price</span>
+                    <span className={[styles.rowValue, styles.rowValueGold, 'num'].join(' ')}>
+                      {usdWhole(precise.spec.floorTotalUsd / precise.spec.quantity)}
+                    </span>
+                  </div>
+                  <div className={styles.row}>
+                    <span className={styles.rowLabel}>Protecting</span>
+                    <span className={[styles.rowValue, 'num'].join(' ')}>
+                      {contracts(precise.spec.quantity)} {precise.spec.asset} · {precise.spec.horizonDays} days
                     </span>
                   </div>
                   <div className={styles.row}>
                     <span className={styles.rowLabel}>Spent so far</span>
-                    <span className={styles.rowValue}>
-                      ${precise.spentUsd.toFixed(2)} / ${precise.totalSpendCapUsd.toFixed(2)} cap
+                    <span className={[styles.rowValue, 'num'].join(' ')}>
+                      {usd(precise.spentUsd)} / {usd(precise.totalSpendCapUsd)}
                     </span>
+                  </div>
+                  <div className={styles.budgetBar} aria-hidden="true">
+                    <div
+                      className={styles.budgetBarFill}
+                      style={{
+                        width: `${Math.min(100, (precise.spentUsd / Math.max(precise.totalSpendCapUsd, 0.01)) * 100).toFixed(1)}%`,
+                      }}
+                    />
                   </div>
                   <div className={styles.row}>
                     <span className={styles.rowLabel}>Rolls used</span>
-                    <span className={styles.rowValue}>{precise.rollsUsed} / {precise.maxRolls}</span>
+                    <span className={[styles.rowValue, 'num'].join(' ')}>
+                      {precise.rollsUsed} / {precise.maxRolls}
+                    </span>
                   </div>
                 </div>
+
                 {precise.history.length > 0 && (
-                  <ul className={styles.rollHistory}>
-                    {precise.history.map((h) => (
-                      <li key={h.txHash}>
-                        ${h.strike.toLocaleString()} floor · ${h.premiumUsd.toFixed(2)} ·{' '}
-                        <a href={`https://basescan.org/tx/${h.txHash}`} target="_blank" rel="noreferrer">
-                          {h.txHash.slice(0, 10)}…
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    <p className={styles.historyTitle}>Roll history</p>
+                    <ul className={styles.rollHistory}>
+                      {precise.history.map((h) => (
+                        <li key={h.txHash}>
+                          <span className="num">{usdWhole(h.strike)}</span> protected price ·{' '}
+                          <span className="num">{usd(h.premiumUsd)}</span> ·{' '}
+                          <a href={`https://basescan.org/tx/${h.txHash}`} target="_blank" rel="noreferrer" className="num">
+                            {h.txHash.slice(0, 10)}…
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
+
                 {cancelError && <div className={ui.errorBox}>{cancelError}</div>}
                 {precise.active && (
                   <button className={ui.btnOutline} onClick={handleCancelPrecise} disabled={cancelling}>
-                    {cancelling ? <span className={ui.spinner} /> : null} Cancel protection
+                    {cancelling ? <span className={ui.spinner} /> : null} Stop auto-rolling
                   </button>
                 )}
                 <p className={styles.metaLine}>
-                  Cancelling stops future rolls only — any protection currently active keeps running to its own expiry.
+                  Stopping cancels future rolls only. Protection that is already active keeps running to its own expiry.
                 </p>
               </div>
             </>

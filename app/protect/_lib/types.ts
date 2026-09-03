@@ -10,10 +10,12 @@ export type Goal = {
   days: number;
 };
 
-export type ChatMessage = {
-  from: 'you' | 'payung';
-  text: string;
-};
+/** A message can also (or only) render a live, interactive component in the chat thread. */
+export type ChatCardKind = 'quote-options' | 'confirm-summary' | 'connect-wallet' | 'review-execute' | 'purchased';
+
+export type ChatMessage =
+  | { from: 'you'; text: string }
+  | { from: 'payung'; text?: string; card?: ChatCardKind };
 
 export type FieldKey = 'asset' | 'quantity' | 'floor' | 'horizonDays';
 
@@ -135,6 +137,8 @@ export type QuoteCard = {
   network: string;
   collateralSymbol: string | null;
   judgment: Judgment;
+  /** Payoff curve from /api/quote — what the position is worth at each settlement price. */
+  payoff: { spot: number; pnl: number }[];
 };
 
 export type WalletState = {

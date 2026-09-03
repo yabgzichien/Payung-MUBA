@@ -1,5 +1,5 @@
 .budgetRow {
-  margin: 20px 0;
+  margin: 24px 0;
 }
 
 .budgetLabel {
@@ -16,7 +16,11 @@
   border-radius: var(--radius);
   background: var(--input-bg);
   color: var(--text-bright);
-  font-size: 15px;
+  font-size: 16px;
+}
+
+.budgetInputInvalid {
+  border-color: var(--danger-border);
 }
 
 .budgetHint {
@@ -26,30 +30,158 @@
   line-height: 1.5;
 }
 
+.budgetError {
+  color: var(--danger);
+}
+
 .steps {
   list-style: none;
   padding: 0;
-  margin: 20px 0;
+  margin: 24px 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.steps li {
-  padding: 10px 14px;
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text-dim);
-  font-size: 14px;
+}
+
+.stepMark {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--subcard-bg);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.stepText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.stepTitle {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: inherit;
+}
+
+.stepSub {
+  font-size: 12.5px;
+  color: var(--text-muted);
 }
 
 .stepActive {
   border-color: var(--accent-border);
-  color: var(--text-bright);
   background: var(--accent-bg);
+  color: var(--text-bright);
+}
+
+.stepActive .stepMark {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .stepDone {
   border-color: var(--green-border);
   color: var(--green-text);
+}
+
+.stepDone .stepMark {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text-dark);
+}
+
+/*
+ * Shown when a previous attempt funded the Safe but could not finish. This is
+ * the user's pointer back to their own money, so it is deliberately the
+ * loudest non-error block on the page.
+ */
+.recovery {
+  border: 1px solid var(--gold-border);
+  background: var(--gold-bg);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 24px;
+}
+
+.recoveryTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gold);
+  margin: 0 0 6px;
+}
+
+.recoveryBody {
+  font-size: 13.5px;
+  color: var(--text-main);
+  line-height: 1.55;
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+}
+
+.recoveryNote {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+
+.unavailable {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 24px;
+  color: var(--warn-text);
+}
+
+.unavailableTitle {
+  font-size: 14.5px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.unavailableBody {
+  font-size: 13.5px;
+  color: var(--text-main);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.doneBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--green-border);
+  background: var(--green-bg);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  color: var(--green-text);
+  font-size: 14px;
+}
+
+@media (max-width: 560px) {
+  .step {
+    padding: 12px 14px;
+  }
 }

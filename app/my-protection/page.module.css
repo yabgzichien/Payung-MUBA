@@ -74,7 +74,32 @@
   height: 100%;
   border-radius: 999px;
   background: var(--accent);
-  transition: width 0.3s ease;
+  /* transform, not width — animating width relayouts the bar every frame. */
+  transform-origin: left center;
+  transition: transform 0.3s ease;
+}
+
+.budgetBar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-subtle);
+  overflow: hidden;
+  margin: -2px 0 4px;
+}
+
+.budgetBarFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--gold);
+}
+
+.historyTitle {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 18px 0 8px;
 }
 
 .metaLine {

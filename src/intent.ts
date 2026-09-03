@@ -44,7 +44,7 @@ export const gonkaLlm = groqLlm;
 const SYSTEM = `You translate a user's crypto-protection request into JSON. Output ONLY a JSON object, nothing else.
 Fields:
 - "asset" ("ETH" or "BTC" — the asset they hold)
-- "quantity" (number — how much of the asset they hold)
+- "quantity" (number — how much of the asset they hold or want to protect, e.g. "1 ETH", "0.2 BTC", "keep 1 ETH")
 - "floorTotalUsd" (number — the total USD value they need their WHOLE holding to be worth)
 - "horizonDays" (number — how many days until their deadline)
 "two weeks" means 14. "a month" means 30. "end of next week" means about 10.
@@ -64,11 +64,12 @@ Never invent a quantity, floor, or horizon that is not stated or clearly implied
 const SYSTEM_PARTIAL = `You translate a user's crypto-protection request into JSON. Output ONLY a JSON object, nothing else.
 Fields — use null for any field the text does not state or clearly imply. Never guess or invent a value:
 - "asset" (the symbol they hold, exactly as named, e.g. "ETH", "BTC", or any other ticker they mention — or null)
-- "quantity" (number — how much of the asset they hold — or null)
+- "quantity" (number — how much of the asset they hold or want to protect, e.g. "1 ETH", "0.2 BTC", "keep 1 ETH", "protect my 2 ETH" gives quantity 1, 0.2, 2. If no amount to protect is mentioned, e.g. "keep ETH above $2,000", "protect ETH", use null)
 - "floorValue" (number — the price they mention — or null)
-- "floorMode" ("perUnit" if floorValue is the price of ONE unit of the asset — e.g. "the BTC price", "per ETH", "market price of $X", "not fall below $X" with no "total" wording — or "total" if floorValue is the value of their WHOLE holding — e.g. "worth $X total", "my holding worth $X". null if floorValue is null.)
+- "floorMode" ("perUnit" if floorValue is the price of ONE unit of the asset — e.g. "the BTC price", "per ETH", "market price of $X", "not fall below $X", "above $X", "at $X" with no "total" wording — or "total" if floorValue is the value of their WHOLE holding — e.g. "worth $X total", "my holding worth $X". null if floorValue is null.)
 - "horizonDays" (number — how many days until their deadline — or null)
 "two weeks" means 14. "a month" means 30. "end of next week" means about 10.
+Important: phrasing like "Keep 1 ETH above $2,200", "Protect 0.2 ETH at $2,300", or "1 ETH above $2,200" specifies BOTH the quantity (1 ETH, 0.2 ETH) and the per-unit floor price ($2,200, $2,300). Do NOT leave quantity as null when an amount like "1 ETH" is stated.
 Do NOT divide, multiply, or otherwise compute floorValue from quantity or vice versa — report only the number as stated.
 Only output {"error":"<one short sentence why>"} when the text is not about protecting a crypto holding's value AT ALL (e.g. an unrelated question or a joke). If it IS a protection request but names an asset other than ETH/BTC, still fill in every other field normally — do NOT use the error field just because the asset is unsupported.`;
 
@@ -260,6 +261,20 @@ export function classifyPartialSpec(obj: any): PartialSpecResult {
   }
 
   return { asset, quantity, unitFloorUsd, floorTotalUsd, horizonDays, missingFields, fieldErrors };
+}
+
+/**
+ * Join prior conversation turns with the newest one into a single sentence
+ * for parsePartialIntent. Without this, each chat message is parsed as an
+ * amnesiac one-off — a follow-up like "I currently have 0.01 ETH" says
+ * nothing about "protecting" on its own and gets misread as off-topic. The
+ * model needs the whole conversation, not just the latest fragment.
+ */
+export function combineGoalText(priorTurns: string[], text: string): string {
+  return [...priorTurns, text]
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .join(' ');
 }
 
 export async function parsePartialIntent(text: string, llm: LlmClient): Promise<PartialSpecResult> {

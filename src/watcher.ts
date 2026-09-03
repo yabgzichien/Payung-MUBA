@@ -4,8 +4,10 @@
  * Default mode NOTIFIES: it detects, quotes a replacement, and alerts. The human
  * confirms and signs. --auto executes within declared limits.
  *
- * Runs locally against the burner wallet only. It is never deployed to Vercel,
- * and serverSigningAllowed() is untouched by this module.
+ * Runs locally against the burner wallet only. It is never deployed to Vercel —
+ * see watcherLoopAllowed() in api-shared.ts (a hard gate on the loop even
+ * existing there) and serverSigningAllowed() (a separate gate on the actual
+ * spend, checked by executeRoll's callers). Neither is touched by this module.
  */
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -37,7 +39,7 @@ export function appendAudit(entry: AuditEntry, dir = DEFAULT_DIR): void {
 
 export type CycleReport = { checked: number; rolls: number; blocked: number; alerts: string[] };
 
-async function positionsFor(address: string, nowSec: number): Promise<ShapedPosition[]> {
+export async function positionsFor(address: string, nowSec: number): Promise<ShapedPosition[]> {
   const client = readClient();
   // Mirror the exact indexer call app/api/positions/route.ts and src/tools.ts's
   // list_positions already make: client.api.getUserPositionsFromIndexer(address),
@@ -54,7 +56,7 @@ async function positionsFor(address: string, nowSec: number): Promise<ShapedPosi
 }
 
 /** Find the best replacement for an expiring commitment, using the same filters as everything else. */
-async function findReplacement(c: Commitment, now: Date): Promise<{ candidate: Candidate; premiumUsd: number } | null> {
+export async function findReplacement(c: Commitment, now: Date): Promise<{ candidate: Candidate; premiumUsd: number } | null> {
   const daysLeft = deadlineDaysLeft(c, now);
   if (daysLeft <= 0) return null;
   const list = await findCandidates({ ...c.spec, horizonDays: Math.ceil(daysLeft) });
@@ -62,6 +64,75 @@ async function findReplacement(c: Commitment, now: Date): Promise<{ candidate: C
   const best = list[0];
   const q = await quote(best, c.contracts * best.pricePerContract);
   return { candidate: best, premiumUsd: q.premiumUsdc };
+}
+
+export type RollExecutionResult = Awaited<ReturnType<typeof execute>>;
+
+/**
+ * Simulate, ensure collateral, execute, and record the roll used. Shared by
+ * the --auto branch below and a human-approved manual roll (the GUI's
+ * POST /api/watcher/roll with confirm:true) — one execution path either way.
+ */
+export async function executeRoll(
+  c: Commitment, replacement: { candidate: Candidate; premiumUsd: number }
+): Promise<RollExecutionResult> {
+  // Simulate first, always. Never send a fill that was not dry-run.
+  await simulate(replacement.candidate, replacement.premiumUsd);
+
+  // Mirror cli.ts's manual `execute` case: ensure the burner wallet holds
+  // the order book's actual collateral token (aBasUSDC) before executing,
+  // not just raw USDC. execute() sends an approval transaction before its
+  // own internal resimulate/fill, so skipping this would spend gas on a
+  // doomed roll whenever the wallet holds the wrong collateral shape.
+  const wclient = writeClient();
+  const dec = await collateralDecimals(wclient, replacement.candidate.collateralToken);
+  await ensureDollarCollateral(
+    wclient, replacement.candidate.collateralToken,
+    BigInt(Math.round(replacement.premiumUsd * 10 ** dec))
+  );
+
+  const receipt = await execute(replacement.candidate, replacement.premiumUsd);
+  incrementRolls(c.txHash);
+  return receipt;
+}
+
+export type CommitmentEvaluation = {
+  commitment: Commitment;
+  position: ShapedPosition | null;
+  /** null only when there is no matching position to evaluate against. */
+  decision: RollDecision | null;
+  /** Populated only when decision.action === 'roll'. A fresh quote — never a stale cached one. */
+  replacement: { candidate: Candidate; premiumUsd: number } | null;
+  /** True when a replacement exists but costs more than the policy's maxPremiumUsd cap. */
+  overCap: boolean;
+};
+
+/**
+ * The single per-commitment decision path — shared by the real watch cycle
+ * (runWatchCycle, which acts on the result) and any read-only preview (which
+ * just displays it). One implementation so the two can never drift apart.
+ */
+export async function evaluateCommitment(
+  c: Commitment, positions: ShapedPosition[], now: Date, policy: RollPolicy
+): Promise<CommitmentEvaluation> {
+  // optionAddress on a Commitment is currently an order signature, not a
+  // deployed contract address (execute() has no reliable on-chain option
+  // address to record yet — see core.ts's writeCommitment call site). The
+  // txHash comparison is the reliable match; optionAddress is kept only as
+  // a best-effort fallback that may never actually match anything today.
+  const p = positions.find(
+    (x) => x.entryTxHash === c.txHash || x.optionAddress?.toLowerCase() === c.optionAddress.toLowerCase()
+  );
+  if (!p) return { commitment: c, position: null, decision: null, replacement: null, overCap: false };
+
+  const decision = decideRoll(p, c, now, policy);
+  if (decision.action !== 'roll') {
+    return { commitment: c, position: p, decision, replacement: null, overCap: false };
+  }
+
+  const replacement = await findReplacement(c, now);
+  const overCap = replacement !== null && replacement.premiumUsd > policy.maxPremiumUsd;
+  return { commitment: c, position: p, decision, replacement, overCap };
 }
 
 export async function runWatchCycle(opts: {
@@ -77,18 +148,12 @@ export async function runWatchCycle(opts: {
   const report: CycleReport = { checked: 0, rolls: 0, blocked: 0, alerts: [] };
 
   for (const c of commitments) {
-    // optionAddress on a Commitment is currently an order signature, not a
-    // deployed contract address (execute() has no reliable on-chain option
-    // address to record yet — see core.ts's writeCommitment call site). The
-    // txHash comparison is the reliable match; optionAddress is kept only as
-    // a best-effort fallback that may never actually match anything today.
-    const p = positions.find(
-      (x) => x.entryTxHash === c.txHash || x.optionAddress?.toLowerCase() === c.optionAddress.toLowerCase()
-    );
-    if (!p) continue;
+    const evaluation = await evaluateCommitment(c, positions, now, opts.policy);
+    const p = evaluation.position;
+    const decision = evaluation.decision;
+    if (!p || !decision) continue;
     report.checked++;
 
-    const decision = decideRoll(p, c, now, opts.policy);
     if (decision.action === 'none') continue;
 
     if (decision.action === 'blocked') {
@@ -99,7 +164,7 @@ export async function runWatchCycle(opts: {
       continue;
     }
 
-    const replacement = await findReplacement(c, now);
+    const replacement = evaluation.replacement;
     if (!replacement) {
       const msg = `Protection on ${c.spec.asset} expires in ${decision.remainingDays.toFixed(1)}d and nothing on the live book can replace it.`;
       report.alerts.push(msg);
@@ -107,7 +172,7 @@ export async function runWatchCycle(opts: {
       continue;
     }
 
-    if (replacement.premiumUsd > opts.policy.maxPremiumUsd) {
+    if (evaluation.overCap) {
       report.blocked++;
       const msg = `A replacement exists at $${replacement.premiumUsd.toFixed(2)} but the policy cap is $${opts.policy.maxPremiumUsd.toFixed(2)}.`;
       report.alerts.push(msg);
@@ -134,23 +199,7 @@ export async function runWatchCycle(opts: {
       continue;
     }
 
-    // --auto: simulate first, always. Never send a fill that was not dry-run.
-    await simulate(replacement.candidate, replacement.premiumUsd);
-
-    // Mirror cli.ts's manual `execute` case: ensure the burner wallet holds
-    // the order book's actual collateral token (aBasUSDC) before executing,
-    // not just raw USDC. execute() sends an approval transaction before its
-    // own internal resimulate/fill, so skipping this would spend gas on a
-    // doomed roll whenever the wallet holds the wrong collateral shape.
-    const wclient = writeClient();
-    const dec = await collateralDecimals(wclient, replacement.candidate.collateralToken);
-    await ensureDollarCollateral(
-      wclient, replacement.candidate.collateralToken,
-      BigInt(Math.round(replacement.premiumUsd * 10 ** dec))
-    );
-
-    const receipt = await execute(replacement.candidate, replacement.premiumUsd);
-    incrementRolls(c.txHash);
+    const receipt = await executeRoll(c, replacement);
     report.rolls++;
     report.alerts.push(`${summary}\n  Rolled. ${receipt.explorer}`);
     appendAudit({

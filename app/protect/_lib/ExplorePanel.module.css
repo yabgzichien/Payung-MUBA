@@ -1,0 +1,305 @@
+.chartCard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  padding: 24px 26px 20px;
+  margin: 20px 0 24px;
+}
+
+.chart {
+  position: relative;
+  height: 340px;
+  display: flex;
+  flex-direction: column;
+}
+
+.compact .chart {
+  height: 240px;
+}
+
+.plotArea {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+}
+
+.axisRow {
+  position: relative;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.axisLabelLeft,
+.axisLabelRight {
+  position: absolute;
+  bottom: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.axisLabelLeft {
+  left: 2px;
+  color: var(--text-dim);
+}
+
+.axisLabelRight {
+  color: var(--accent);
+  transform: translateX(-50%);
+}
+
+.protectedZone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent-bg);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.nowLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+
+.expiryLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1.5px dashed var(--accent);
+  pointer-events: none;
+}
+
+.candleTrack {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 0 2px;
+}
+
+.candle {
+  position: relative;
+  flex: 1;
+  height: 100%;
+}
+
+.wick {
+  position: absolute;
+  left: 50%;
+  width: 1.5px;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+
+.body {
+  position: absolute;
+  left: 50%;
+  width: 55%;
+  border-radius: 1px;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+
+.candleUp {
+  color: var(--accent);
+}
+
+.candleUp .body {
+  background: var(--accent);
+}
+
+.candleDown {
+  color: var(--danger);
+}
+
+.candleDown .body {
+  background: var(--danger);
+}
+
+.spotLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--text-dim);
+  pointer-events: none;
+}
+
+.spotLabel {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  transform: translateY(-100%);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.floorLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  cursor: grab;
+  touch-action: none;
+  z-index: 2;
+}
+
+.floorLine:active,
+.floorLineActive {
+  cursor: grabbing;
+}
+
+/* The slider is a bare div, so the global ring needs somewhere to land. */
+.floorLine:focus-visible {
+  outline: none;
+}
+
+.floorLine:focus-visible .floorBadge {
+  outline: 2px solid var(--text-bright);
+  outline-offset: 2px;
+}
+
+.floorLine:focus-visible .floorLineTrack {
+  border-top-color: var(--text-bright);
+}
+
+.floorLineTrack {
+  width: 100%;
+  border-top: 2px solid var(--gold);
+  pointer-events: none;
+}
+
+.floorLineActive .floorLineTrack {
+  border-top-color: var(--text-bright);
+}
+
+.floorBadge {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
+  background: var(--gold);
+  color: #2b230f;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.floorControls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.floorBtn {
+  min-height: 44px;
+  padding: 9px 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--subcard-bg);
+  color: var(--text-dim);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.floorBtn:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.floorBtnActive {
+  border-color: var(--gold-border);
+  background: var(--gold-bg);
+  color: var(--gold);
+}
+
+.statsRow {
+  display: flex;
+  gap: 20px;
+  margin: 24px 0 28px;
+}
+
+.statCell {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--subcard-bg);
+  padding: 16px 18px;
+}
+
+.statLabel {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin: 0 0 6px;
+}
+
+.statValue {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 0;
+}
+
+.statSub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 5px 0 0;
+}
+
+.degraded {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  border-radius: var(--radius);
+  color: var(--warn-text);
+  font-size: 13px;
+}
+
+.degraded svg {
+  flex: none;
+}
+
+@media (max-width: 640px) {
+  .chartCard {
+    padding: 18px 14px 16px;
+  }
+
+  .chart {
+    height: 280px;
+  }
+
+  .statsRow {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .floorControls {
+    flex-wrap: wrap;
+  }
+
+  .axisLabelRight {
+    font-size: 10px;
+  }
+}

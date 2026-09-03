@@ -3,15 +3,62 @@
  * src/server.ts so they can be imported by the app/api route handlers and by
  * tests/wire.test.ts without pulling in Next.js or Node's http module.
  */
-import { coverageGapDays, impliedStrike, knownTokenSymbol, type Candidate, type ProtectionSpec } from './core';
+import {
+  coverageGapDays, impliedStrike, knownTokenSymbol, type Candidate, type ProtectionSpec, type RollEstimate,
+} from './core';
 import { badgeFor } from './presentation';
 import type { Candle } from './spot';
 
-/** Candidates from the latest search, by id. One user, one demo — a Map is the right size. */
+/**
+ * Candidates from recent searches, by id, ACROSS all in-flight sessions.
+ *
+ * This used to be wiped (`cache.clear()`) at the top of every /api/candidates
+ * request, on the assumption of "one user, one demo". That assumption breaks
+ * the moment two people load the deployed app at once: B's search evicted A's
+ * selected candidate, and A's next /api/quote or /api/prepare-tx failed with
+ * "Unknown or stale candidate id" in the middle of a purchase. It also broke a
+ * single user, because the Explore screen re-searches on every floor change
+ * and would evict the selection the Results screen was still holding.
+ *
+ * Entries are therefore additive and expire on their own clock. Staleness was
+ * always enforced by CACHE_MAX_AGE_MS in getCached(), not by the wipe, so
+ * dropping the wipe costs no safety. rememberCandidates() bounds the map so an
+ * append-only cache cannot grow without limit.
+ */
 export const cache = new Map<string, { candidate: Candidate; spec: ProtectionSpec; fetchedAt: number }>();
 
 /** A candidate older than this is refused rather than quoted/filled against — the live book moves. */
 export const CACHE_MAX_AGE_MS = 3 * 60 * 1000;
+
+/**
+ * Hard ceiling on retained candidates. A search returns a handful, and entries
+ * live at most CACHE_MAX_AGE_MS, so this is only ever reached under abuse.
+ */
+const CACHE_MAX_ENTRIES = 500;
+
+/**
+ * Records a search's candidates without disturbing anyone else's. Expired
+ * entries are swept first; if that is not enough, the oldest are dropped
+ * (Map preserves insertion order, so the head is the oldest).
+ */
+export function rememberCandidates(
+  entries: { id: string; candidate: Candidate; spec: ProtectionSpec }[],
+  now = Date.now()
+): void {
+  for (const [id, entry] of cache) {
+    if (now - entry.fetchedAt > CACHE_MAX_AGE_MS) cache.delete(id);
+  }
+  for (const { id, candidate, spec } of entries) {
+    // Re-set so a re-searched candidate moves to the tail with a fresh clock.
+    cache.delete(id);
+    cache.set(id, { candidate, spec, fetchedAt: now });
+  }
+  while (cache.size > CACHE_MAX_ENTRIES) {
+    const oldest = cache.keys().next();
+    if (oldest.done) break;
+    cache.delete(oldest.value);
+  }
+}
 
 export type SpotReading = { price: number; updatedAt: string; feed: string };
 
@@ -49,6 +96,23 @@ export const SERVER_SIGNING_REFUSAL =
   'Server-side signing is disabled on this deployment. This endpoint spends real funds from the ' +
   'server wallet and is only available when the server is bound to localhost (npm run web). ' +
   'Use POST /api/prepare-tx and sign with your own wallet instead.';
+
+/**
+ * Whether the watcher's background loop may even be started.
+ *
+ * Unlike serverSigningAllowed(), this has no override: a Vercel serverless
+ * function does not keep a persistent process across invocations, so a
+ * setInterval-driven loop (src/watcher-runtime.ts) cannot work there at all —
+ * this is a technical constraint, not a policy one. The loop only ever runs
+ * inside the long-lived `npm run web` process.
+ */
+export function watcherLoopAllowed(): boolean {
+  return !process.env.VERCEL;
+}
+
+export const WATCHER_LOOP_REFUSAL =
+  'The watcher loop needs a persistent process and cannot run on this deployment. ' +
+  'Run it locally with `npm run web` instead.';
 
 /**
  * Marks an error as caused by bad client input (a malformed spec, a stale
@@ -98,6 +162,21 @@ export function toWire(c: Candidate, spec: ProtectionSpec, isTopPick = false) {
     coversFullHorizon: c.daysToExpiry >= spec.horizonDays,
     /** Computed by badgeFor() — the single source of truth shared by the web UI and the CLI. */
     badge: badgeFor(c, spec, isTopPick),
+  };
+}
+
+/**
+ * anchorLeg carries a raw SDK order (candidate.raw) that must never reach the
+ * client — reuse toWire() for it, same as every other candidate on the wire.
+ */
+export function toRollEstimateWire(est: RollEstimate, spec: ProtectionSpec) {
+  return {
+    anchorLeg: toWire(est.anchorLeg, spec),
+    anchorPremiumUsd: est.anchorPremiumUsd,
+    estimatedLegs: est.estimatedLegs,
+    estimatedTotalPremiumUsd: est.estimatedTotalPremiumUsd,
+    ivUsed: est.ivUsed,
+    spotUsed: est.spotUsed,
   };
 }
 

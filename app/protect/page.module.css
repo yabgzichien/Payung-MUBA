@@ -1,0 +1,148 @@
+.chatLog {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 4px;
+}
+
+.speakerLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin: 0 0 8px;
+}
+
+.speakerLabelAccent {
+  color: var(--accent);
+}
+
+.bubble {
+  border: 1px solid var(--border-subtle);
+  background: var(--subcard-bg);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  font-size: 15px;
+  color: var(--text-main);
+  line-height: 1.5;
+  animation: riseIn 0.32s var(--ease-out) both;
+}
+
+.bubblePayung {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+.exampleRow {
+  margin: 16px 0 24px;
+}
+
+.exampleLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  min-height: 36px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-border);
+  background: transparent;
+  color: var(--accent);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s var(--ease-out);
+}
+
+.chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chip:hover:not(:disabled) {
+  background: var(--accent-bg);
+  transform: translateY(-1px);
+}
+
+.chip:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+/*
+ * First state of the floor object. The gold rule under the parsed goal is the
+ * same line that becomes the draggable floor on Explore and the dashed marker
+ * on the payoff chart — one element the user tracks through the whole flow.
+ */
+.parsed {
+  margin: 20px 0 24px;
+  animation: riseIn 0.32s ease both;
+}
+
+.parsedFloorMark {
+  display: block;
+  height: 0;
+  border-top: 2px solid var(--gold);
+  margin-bottom: 10px;
+}
+
+.parsedRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 13.5px;
+}
+
+.parsedFloor {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.parsedDivider {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--border);
+  flex: none;
+}
+
+/* A card message renders full-width, without the bubble chrome its lead-in text uses. */
+.cardWrap {
+  margin-top: 4px;
+  animation: riseIn 0.32s var(--ease-out) both;
+}
+
+/* A superseded card (e.g. options shown before an earlier selection) collapses to one line. */
+.staleCard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.staleCard svg {
+  flex: none;
+  color: var(--accent);
+}
+
+@media (max-width: 560px) {
+  .bubble {
+    padding: 14px 15px;
+    font-size: 14.5px;
+  }
+
+  .chip {
+    min-height: 40px;
+  }
+}

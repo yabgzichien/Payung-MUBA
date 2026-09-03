@@ -63,6 +63,33 @@ export async function fetchSpotPrice(asset: 'ETH' | 'BTC'): Promise<number | nul
   return data?.spot?.price ?? null;
 }
 
+export type Candle = { t: number; o: number; h: number; l: number; c: number };
+
+/**
+ * Real OHLC history plus live spot, in one call.
+ *
+ * /api/history has always returned both; the Explore chart used to ignore the
+ * candles and render a hardcoded 28-bar array under a "14D AGO" axis label —
+ * invented market history in a product whose entire pitch is live pricing.
+ * `historyError` is surfaced rather than swallowed so a degraded chart reads
+ * as degraded instead of as a complete one.
+ */
+export async function fetchPriceHistory(
+  asset: 'ETH' | 'BTC',
+  days = 14
+): Promise<{ candles: Candle[]; spot: number | null; historyError: string | null }> {
+  const res = await fetch(`/api/history?asset=${asset}&days=${days}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { candles: [], spot: null, historyError: data?.error ?? `history failed with ${res.status}` };
+  }
+  return {
+    candles: Array.isArray(data?.candles) ? data.candles : [],
+    spot: data?.spot?.price ?? null,
+    historyError: data?.historyError ?? null,
+  };
+}
+
 export function fetchPrepareOpen(params: {
   spec: { asset: string; quantity: number; floorTotalUsd: number; horizonDays: number };
   safe: string;

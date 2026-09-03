@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseIntent, validateSpec, parsePartialIntent, classifyPartialSpec } from '../src/intent.js';
+import { parseIntent, validateSpec, parsePartialIntent, classifyPartialSpec, combineGoalText } from '../src/intent.js';
 
 const llmReturning = (s: string) => async () => s;
 
@@ -75,6 +75,27 @@ describe('parseIntent', () => {
     );
     await expect(promise).rejects.toThrow(/quantity/i);
     await expect(promise).rejects.not.toThrow(/invalid JSON/);
+  });
+});
+
+describe('combineGoalText', () => {
+  // Regression: the web chat sent only the latest message to /api/parse, so a
+  // follow-up answer like "I currently have 0.01 ETH" — which says nothing
+  // about "protecting" on its own — got misclassified as not a protection
+  // request at all. The fix is to give the model the whole conversation so
+  // far, not a single amnesiac sentence.
+  it('joins prior turns with the new turn into one sentence', () => {
+    expect(combineGoalText(['How do I protect my ETH?'], 'I currently have 0.01 ETH')).toBe(
+      'How do I protect my ETH? I currently have 0.01 ETH'
+    );
+  });
+
+  it('returns just the new turn when there is no prior history', () => {
+    expect(combineGoalText([], 'Protect 0.2 ETH at $2,300 for 7 days')).toBe('Protect 0.2 ETH at $2,300 for 7 days');
+  });
+
+  it('drops blank turns', () => {
+    expect(combineGoalText(['  ', 'I have 1 ETH'], 'for 7 days')).toBe('I have 1 ETH for 7 days');
   });
 });
 
@@ -187,6 +208,17 @@ describe('parsePartialIntent', () => {
     expect(result.asset).toBe('ETH');
     expect(result.horizonDays).toBe(14);
     expect(result.missingFields.sort()).toEqual(['floor', 'quantity']);
+  });
+
+  it('parses "Keep 1 ETH above $2,200 for 2 weeks" spec object with perUnit floor mode', async () => {
+    const result = await parsePartialIntent(
+      'Keep 1 ETH above $2,200 for 2 weeks',
+      llmReturning('{"asset":"ETH","quantity":1,"floorValue":2200,"floorMode":"perUnit","horizonDays":14}'),
+    );
+    expect(result).toEqual({
+      asset: 'ETH', quantity: 1, unitFloorUsd: 2200, floorTotalUsd: 2200, horizonDays: 14,
+      missingFields: [], fieldErrors: {},
+    });
   });
 });
 

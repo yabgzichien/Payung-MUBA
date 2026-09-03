@@ -16,5 +16,8 @@
     "expectFieldError": "asset" },
   { "name": "implausible strike is rejected",
     "raw": { "asset": "ETH", "quantity": 100000000, "floorValue": 100, "floorMode": "total", "horizonDays": 7 },
-    "expectFieldError": "floor" }
+    "expectFieldError": "floor" },
+  { "name": "per-unit floor with 1 unit quantity",
+    "raw": { "asset": "ETH", "quantity": 1, "floorValue": 2200, "floorMode": "perUnit", "horizonDays": 14 },
+    "expect": { "asset": "ETH", "quantity": 1, "floorTotalUsd": 2200, "horizonDays": 14 } }
 ]

@@ -1,0 +1,113 @@
+/* Accent ring instead of the border-left stripe; see results/page.module.css. */
+.summaryCard {
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  padding: 22px 24px;
+  margin-bottom: 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.label {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 4px;
+}
+
+.value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 0;
+}
+
+.valueGold {
+  color: var(--gold);
+}
+
+.payCard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  padding: 22px 24px;
+  margin-bottom: 24px;
+}
+
+.payLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin: 0 0 8px;
+}
+
+.payValue {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+
+.payMeta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.passedWrap {
+  text-align: center;
+  padding: 20px 0 8px;
+}
+
+.passedIcon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+}
+
+.passedTitle {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 0 0 10px;
+}
+
+.passedBody {
+  font-size: 15px;
+  color: var(--text-dim);
+  margin: 0 0 32px;
+  line-height: 1.55;
+}
+
+@media (max-width: 560px) {
+  .summaryCard {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 20px 18px;
+  }
+
+  .payCard {
+    padding: 20px 18px;
+  }
+
+  .passedIcon {
+    width: 54px;
+    height: 54px;
+  }
+
+  .passedTitle {
+    font-size: 22px;
+  }
+}

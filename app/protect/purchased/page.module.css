@@ -1,0 +1,160 @@
+.head {
+  text-align: center;
+  padding: 12px 0 8px;
+}
+
+.icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 0 0 10px;
+}
+
+.subtitle {
+  font-size: 15px;
+  color: var(--text-dim);
+  margin: 0 0 18px;
+}
+
+.activePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 32px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.statsRow {
+  display: flex;
+  gap: 20px;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 20px 0;
+  margin-bottom: 24px;
+}
+
+.statCell {
+  flex: 1;
+}
+
+.statLabel {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin: 0 0 6px;
+}
+
+.statValue {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 0;
+}
+
+.statValueAccent {
+  color: var(--accent);
+}
+
+/*
+ * One receipt row instead of the old two-column block. The second column
+ * restated what the stats row above already said, and the whole page is a
+ * confirmation — it should be readable in a glance, not browsed.
+ */
+.receipt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+
+.receipt a {
+  width: auto;
+  flex: none;
+}
+
+.colTitle {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+
+.hashRow {
+  font-size: 13.5px;
+  color: var(--text-bright);
+  word-break: break-all;
+  margin: 0;
+}
+
+.summaryLine {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 28px;
+}
+
+.statValueGold {
+  color: var(--gold);
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+.actions > * {
+  flex: 1;
+}
+
+@media (max-width: 560px) {
+  .title {
+    font-size: 23px;
+  }
+
+  .statsRow {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .receipt {
+    padding: 18px;
+  }
+
+  .receipt a {
+    width: 100%;
+  }
+
+  .actions {
+    flex-direction: column;
+  }
+}

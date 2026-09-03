@@ -4,9 +4,14 @@
   margin: 0 0 28px;
 }
 
+/*
+ * The recommended card is distinguished by an accent ring and a lifted
+ * surface rather than the border-left stripe it used to carry — that stripe is
+ * the single most recognisable "generated UI" tell, and it was doing the same
+ * job twice alongside the RECOMMENDED label.
+ */
 .quoteCard {
   border: 1px solid var(--border);
-  border-left: 3px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--card-bg);
   padding: 24px 26px;
@@ -14,7 +19,9 @@
 }
 
 .quoteCardRecommended {
-  border-left-color: var(--accent);
+  border-color: var(--accent-border);
+  background: linear-gradient(180deg, var(--accent-bg) 0%, var(--card-bg) 130px);
+  box-shadow: 0 0 0 1px rgba(24, 184, 154, 0.12);
 }
 
 .quoteLabel {
@@ -23,11 +30,65 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent);
-  margin: 0 0 18px;
+  margin: 0 0 16px;
 }
 
 .quoteLabelMuted {
   color: var(--text-muted);
+}
+
+/* Price, then immediately what that price means as a share of protected value. */
+.costBlock {
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.costMain {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.costValue {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--text-bright);
+  line-height: 1.1;
+}
+
+.verdict {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+
+.verdict_good {
+  color: var(--green-text);
+  border-color: var(--green-border);
+  background: var(--green-bg);
+}
+
+.verdict_warn {
+  color: var(--warn-text);
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+}
+
+.verdict_bad {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.costSub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 6px 0 0;
 }
 
 .rows {
@@ -50,9 +111,13 @@
 }
 
 .rowValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 15px;
   font-weight: 600;
   color: var(--text-bright);
+  text-align: right;
 }
 
 .rowValueGold {
@@ -75,6 +140,25 @@
 
 .noteWarn {
   color: var(--warn-text);
+}
+
+.calloutWarn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  border-radius: var(--radius);
+  color: var(--warn-text);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.calloutWarn svg {
+  flex: none;
+  margin-top: 1px;
 }
 
 .estimateBox {
@@ -103,5 +187,66 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin: 16px 0;
+  margin: 16px 0 0;
+}
+
+/* Empty state: a route forward, not just a red box. */
+.emptyCard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  padding: 32px 28px;
+  text-align: center;
+}
+
+.emptyIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn-text);
+  margin-bottom: 16px;
+}
+
+.emptyBody {
+  font-size: 14.5px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin: 0 auto 24px;
+  max-width: 46ch;
+}
+
+.emptyActions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.emptyActions .linkBack,
+.emptyActions a:last-child {
+  justify-content: center;
+  margin-top: 4px;
+}
+
+@media (max-width: 560px) {
+  .quoteCard {
+    padding: 20px 18px;
+  }
+
+  .costValue {
+    font-size: 28px;
+  }
+
+  .row {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .emptyCard {
+    padding: 24px 18px;
+  }
 }

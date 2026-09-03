@@ -858,7 +858,7 @@ git commit -m "feat: precise.ts — pure merge logic for Precise Protection, no 
 
 **Note:** this task reads the module via a minimal ABI fragment (`commitments(address)` view + events), not the Thetanuts SDK — `readClient()` is used only for `positionsFor()`/`chainConfig`, matching how `app/api/history/route.ts` already mixes a plain `ethers.Provider` read with an SDK client.
 
-- [ ] **Step 1: Write the route**
+- [x] **Step 1: Write the route**
 
 Create `app/api/precise/commitment/route.ts`:
 
@@ -939,12 +939,12 @@ export async function GET(req: NextRequest) {
 
 **Known gap to flag, not silently fix:** `RollExecuted` doesn't carry an expiry, so `history[].expiryIso` is currently always `''`. Leave it — fixing it means adding `expiry` to the `RollExecuted` event in Task 3's contract, which would mean reopening and re-testing Phase 1. Note this as a follow-up in the PR description when this ships; do not block this task on it.
 
-- [ ] **Step 2: Manual verification (no live module deployed yet, so this is a shape check, not a live-data check)**
+- [x] **Step 2: Manual verification (no live module deployed yet, so this is a shape check, not a live-data check)**
 
 Run: `npx tsc --noEmit`
 Expected: clean. There is no automated test for this route (matches the existing convention — no other `app/api/*/route.ts` in this codebase has a dedicated test file; see `app/api/candidates/route.ts`, `app/api/history/route.ts`).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd /home/yang/Project/MUBA

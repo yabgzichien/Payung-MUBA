@@ -39,3 +39,7 @@ next-env.d.ts
 # Local wallet-adjacent operational state (commitments, etc.)
 .payung/
 
+# Foundry build artifacts
+contracts/out/
+contracts/cache/
+contracts/lib/

@@ -584,7 +584,7 @@ git commit -m "feat: PayungRollModule executeRoll() — permissionless, on-chain
 - Consumes: `PayungRollModule` constructor `(address _optionBook, bytes4 _fillOrderSelector)` from Task 2.
 - Produces: a deployed module address that Task 5 onward references as `PAYUNG_ROLL_MODULE_ADDRESS`.
 
-- [ ] **Step 1: Write the deploy script**
+- [x] **Step 1: Write the deploy script**
 
 Create `contracts/script/Deploy.s.sol`:
 
@@ -611,7 +611,7 @@ contract Deploy is Script {
 }
 ```
 
-- [ ] **Step 2: Write `contracts/.env.example`**
+- [x] **Step 2: Write `contracts/.env.example`**
 
 ```
 # Base mainnet OptionBook address — read from client.getContractAddress('optionBook') in src/core.ts
@@ -625,7 +625,7 @@ PRIVATE_KEY=
 BASE_RPC_URL=https://mainnet.base.org
 ```
 
-- [ ] **Step 3: Dry-run the script against a local fork to confirm it compiles and executes**
+- [x] **Step 3: Dry-run the script against a local fork to confirm it compiles and executes**
 
 ```bash
 cd /home/yang/Project/MUBA/contracts
@@ -637,7 +637,7 @@ forge script script/Deploy.s.sol --fork-url https://mainnet.base.org \
 ```
 Expected: script runs, logs a deployed address, no revert. (This is a dry run against a fork — no real deployment yet. Real deployment to Base mainnet is a manual step outside this plan, done once the module has had its review pass per the spec's hard requirement.)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd /home/yang/Project/MUBA

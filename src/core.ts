@@ -15,6 +15,7 @@ import 'dotenv/config';
 import { ethers } from 'ethers';
 import { ThetanutsClient } from '@thetanuts-finance/thetanuts-client';
 import { impliedStrike, coversHorizon, type ProtectionSpec } from './spec';
+import { bsPut, impliedVolPut } from './blackscholes';
 
 export const BASE_CHAIN_ID = 8453;
 export const USDC_DECIMALS = 6;
@@ -239,6 +240,81 @@ export function coverageChoice(ranked: Candidate[], spec: ProtectionSpec): Cover
       best && cheaperShort ? best.pricePerContract - cheaperShort.pricePerContract : null,
     gapDays: cheaperShort ? spec.horizonDays - cheaperShort.daysToExpiry : null,
     surplusDays: best ? best.daysToExpiry - spec.horizonDays : null,
+  };
+}
+
+/**
+ * A fixed constant, not a fetched value — at these tenors (single-digit-to-
+ * mid-double-digit days) the discounting term e^(-r*T) moves the price by
+ * fractions of a cent, far inside the model's other uncertainty.
+ */
+const ROLL_ESTIMATE_RISK_FREE_RATE = 0.045;
+
+export type RollEstimate = {
+  /** The nearest-to-target short-dated candidate this estimate anchors on — a real, live, fillable order. */
+  anchorLeg: Candidate;
+  /** Real premium for anchorLeg at the user's quantity — anchorLeg.pricePerContract * quantity. */
+  anchorPremiumUsd: number;
+  /** How many rolls like anchorLeg it would take to reach the user's horizon. */
+  estimatedLegs: number;
+  /** THEORETICAL — a Black-Scholes price at the user's exact target strike/horizon, not a live quote. */
+  estimatedTotalPremiumUsd: number;
+  ivUsed: number;
+  spotUsed: number;
+};
+
+/**
+ * A planning-only estimate of what chaining several near-dated puts toward
+ * the user's exact target would theoretically cost, for when the book has no
+ * candidate that covers the full horizon at anywhere near the requested
+ * strike. Never invents a number: if there is no short-dated candidate to
+ * anchor on, or none of them report a live IV, this returns null rather than
+ * fabricating a price. See docs/superpowers/specs/
+ * 2026-09-02-chained-roll-estimate-design.md.
+ */
+export function estimateRoll(
+  eligible: Candidate[],
+  spec: ProtectionSpec,
+  spotPrice: number
+): RollEstimate | null {
+  const target = impliedStrike(spec);
+  const shortWithIv = eligible
+    .filter((c) => !coversHorizon(c.daysToExpiry, spec.horizonDays))
+    .map((c) => {
+      let iv = typeof c.greeks?.iv === 'number' && c.greeks.iv > 0 ? c.greeks.iv : undefined;
+      if (iv === undefined && c.pricePerContract > 0 && c.daysToExpiry > 0) {
+        const solved = impliedVolPut(
+          spotPrice,
+          c.strike,
+          c.daysToExpiry / 365,
+          ROLL_ESTIMATE_RISK_FREE_RATE,
+          c.pricePerContract
+        );
+        if (solved !== null && !isNaN(solved) && solved > 0) {
+          iv = solved;
+        }
+      }
+      return { candidate: c, iv };
+    })
+    .filter((x): x is { candidate: Candidate; iv: number } => typeof x.iv === 'number');
+
+  if (shortWithIv.length === 0) return null;
+
+  const anchor = shortWithIv.reduce((a, b) =>
+    Math.abs(b.candidate.strike - target) < Math.abs(a.candidate.strike - target) ? b : a
+  );
+  const anchorLeg = anchor.candidate;
+  const iv = anchor.iv;
+  const tYears = spec.horizonDays / 365;
+
+  return {
+    anchorLeg,
+    anchorPremiumUsd: anchorLeg.pricePerContract * spec.quantity,
+    estimatedLegs: Math.ceil(spec.horizonDays / anchorLeg.daysToExpiry),
+    estimatedTotalPremiumUsd:
+      bsPut(spotPrice, target, tYears, ROLL_ESTIMATE_RISK_FREE_RATE, iv) * spec.quantity,
+    ivUsed: iv,
+    spotUsed: spotPrice,
   };
 }
 

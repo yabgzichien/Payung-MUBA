@@ -15,18 +15,19 @@ type Step = 'idle' | 'deploying' | 'funding' | 'enabling' | 'done';
 
 export default function PreciseSetupPage() {
   const router = useRouter();
-  const { goal, rollEstimate } = useProtectionFlow();
+  const { goal, recommendedQuote, rollEstimate } = useProtectionFlow();
   const [step, setStep] = useState<Step>('idle');
   const [error, setError] = useState<string | null>(null);
   const [safeAddress, setSafeAddress] = useState<string | null>(null);
-  const suggestedBudget = rollEstimate ? rollEstimate.estimatedTotalPremiumUsd * 1.2 : 0;
+  const estimatedTotal = rollEstimate?.estimatedTotalPremiumUsd ?? (recommendedQuote ? recommendedQuote.costUsd * 1.5 : 50);
+  const suggestedBudget = Math.round(estimatedTotal * 1.2 * 100) / 100;
   const [budget, setBudget] = useState(suggestedBudget);
 
-  if (!goal || !rollEstimate) {
+  if (!goal) {
     return (
       <Shell>
         <div className={ui.errorBox}>
-          Start from a protection search first — Precise Protection needs a goal and a live roll estimate to set up.
+          Start from a protection search first — Precise Protection needs a goal to set up.
         </div>
       </Shell>
     );
@@ -46,9 +47,9 @@ export default function PreciseSetupPage() {
       const openTx = await fetchPrepareOpen({
         spec: { asset: goal!.asset, quantity: goal!.quantity, floorTotalUsd: goal!.floorTotalUsd, horizonDays: goal!.days },
         safe,
-        maxPremiumPerRollUsd: rollEstimate!.anchorPremiumUsd * 1.5,
+        maxPremiumPerRollUsd: (rollEstimate?.anchorPremiumUsd ?? recommendedQuote?.costUsd ?? 30) * 1.5,
         totalSpendCapUsd: budget,
-        maxRolls: rollEstimate!.estimatedLegs * 2,
+        maxRolls: (rollEstimate?.estimatedLegs ?? Math.ceil(goal!.days / 30) + 1) * 2,
       });
       await enableModuleAndOpen(safe, MODULE_ADDRESS, openTx);
 

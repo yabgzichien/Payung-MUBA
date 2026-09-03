@@ -75,7 +75,9 @@ export default function ProtectionResultsPage() {
       </p>
 
       <div className={[styles.quoteCard, styles.quoteCardRecommended].join(' ')}>
-        <p className={styles.quoteLabel}>Recommended · Full coverage</p>
+        <p className={styles.quoteLabel}>
+          Recommended · {recommendedQuote.coverageLabel === 'Full' ? 'Full coverage' : 'Best available'}
+        </p>
         <div className={styles.rows}>
           <div className={styles.row}>
             <span className={styles.rowLabel}>Protecting:</span>
@@ -107,6 +109,13 @@ export default function ProtectionResultsPage() {
           <p className={[styles.note, styles.noteWarn].join(' ')}>
             Live liquidity only covers {recommendedQuote.contracts.toFixed(4)} of your {goal.quantity} {goal.asset} right now.
           </p>
+        )}
+        {recommendedQuote.coverageLabel === 'Partial' && (
+          <div style={{ margin: '0.75rem 0', padding: '0.6rem 0.8rem', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '6px', border: '1px solid rgba(234, 179, 8, 0.25)' }}>
+            <p className={[styles.note, styles.noteWarn].join(' ')} style={{ margin: 0 }}>
+              ⚠️ Ends {recommendedQuote.expiryNote.toLowerCase()}. To cover your full {goal.days}-day horizon automatically, set up Precise Protection below.
+            </p>
+          </div>
         )}
         <button className={ui.btnPrimary} onClick={() => choose(recommendedQuote)}>
           Select protection →
@@ -141,7 +150,7 @@ export default function ProtectionResultsPage() {
         </div>
       )}
 
-      {rollEstimate && (
+      {rollEstimate ? (
         <div className={styles.quoteCard}>
           <p className={[styles.quoteLabel, styles.quoteLabelMuted].join(' ')}>Or chain shorter puts</p>
           <div className={styles.rows}>
@@ -177,7 +186,17 @@ export default function ProtectionResultsPage() {
             Manage rolls from My Protection →
           </Link>
         </div>
-      )}
+      ) : recommendedQuote.coverageLabel === 'Partial' ? (
+        <div className={styles.quoteCard}>
+          <p className={[styles.quoteLabel, styles.quoteLabelMuted].join(' ')}>Or chain shorter puts</p>
+          <p className={styles.note}>
+            No single option on the book covers your full {goal.days}-day horizon. Set up Precise Protection to automatically roll your floor forward using a self-custodied Safe smart account.
+          </p>
+          <button className={ui.btnPrimary} style={{ marginTop: '0.75rem' }} onClick={() => router.push('/protect/precise-setup')}>
+            Set up Precise Protection →
+          </button>
+        </div>
+      ) : null}
 
       <Link className={ui.linkBack} href="/protect/explore">
         Want a different floor? Explore protection →

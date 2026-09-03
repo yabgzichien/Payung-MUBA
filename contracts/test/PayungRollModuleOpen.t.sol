@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import "../src/PayungRollModule.sol";
+import "./mocks/MockSafe.sol";
 
 contract PayungRollModuleOpenTest is Test {
     PayungRollModule module;
@@ -69,24 +70,19 @@ contract PayungRollModuleOpenTest is Test {
     }
 
     function test_cancelDoesNotResetSpendOrRollCounters() public {
-        address safe = address(0x1234);
-        PayungRollModule.Commitment memory c = _commitment(safe);
-        vm.prank(safe);
+        MockSafe mockSafe = new MockSafe();
+        PayungRollModule.Commitment memory c = _commitment(address(mockSafe));
+        vm.prank(address(mockSafe));
         module.open(c);
-        // Note: no way to advance spentUsd/rollsUsed without executeRoll (Task 3) —
-        // this test is a placeholder assertion of the zero-state until Task 3 lands,
-        // and MUST be extended there to actually roll once, then cancel, then assert
-        // spentUsd/rollsUsed are unchanged by cancel().
-        vm.prank(safe);
+
+        module.executeRoll(address(mockSafe), abi.encodePacked(FILL_ORDER_SELECTOR, uint256(1)), 9_270_000, 2_225 * 1e8, block.timestamp + 3 days);
+
+        vm.prank(address(mockSafe));
         module.cancel();
-        // NOTE: self-corrected from the brief — the brief's destructuring bound `spentUsd`
-        // one field early (to totalSpendCapUsd's slot). Commitment field order is:
-        // safe, isCall, underlyingFeed, quantity1e6, targetStrike, createdAt, deadline,
-        // maxPremiumPerRollUsd, totalSpendCapUsd, spentUsd, maxRolls, rollsUsed, active —
-        // so spentUsd needs 9 leading blanks (not 8) and rollsUsed needs exactly 1 blank
-        // (maxRolls) between it and spentUsd (not 2).
-        (, , , , , , , , , uint256 spentUsd, , uint256 rollsUsed, ) = module.commitments(safe);
-        assertEq(spentUsd, 0);
-        assertEq(rollsUsed, 0);
+
+        (, , , , , , , , , uint256 spentUsd, , uint256 rollsUsed, bool active) = module.commitments(address(mockSafe));
+        assertEq(spentUsd, 9_270_000);
+        assertEq(rollsUsed, 1);
+        assertFalse(active);
     }
 }

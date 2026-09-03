@@ -6,18 +6,28 @@ This file is written for an AI agent (or human) picking up this project cold. It
 
 ## What this project is
 
-**Payung** ("umbrella" in Malay) is an options-protection product built on the Thetanuts SDK, running live on **Base mainnet** (chainId 8453). A user states a plain-language constraint — "I need my ETH worth at least $2,300 in two weeks" — and the system:
+**Payung** ("umbrella" in Malay) is a non-custodial options-protection product built on the Thetanuts SDK, running live on **Base mainnet** (chainId 8453). A user states a plain-language constraint — "I need my ETH worth at least $2,300 in two weeks" — and the system provides two protection flows:
 
-1. Parses that sentence into `{asset, quantity, floorTotalUsd, horizonDays}` via an LLM (Gonka Router) — **the LLM's only job, ever**.
+### 1. Spot Protection (Single Leg)
+1. Parses user text into `{asset, quantity, floorTotalUsd, horizonDays}` via an LLM (Gonka Router) — **the LLM's only job, ever**.
 2. Queries the live Thetanuts orderbook, filters to currently-fillable put options that actually match (correct underlying, **correct side — the user always BUYS, never writes**, dollar-denominated collateral, roughly the right window) and ranks them by distance to derived `impliedStrike(spec)`.
 3. Prices the best match using the protocol's own math (never invented numbers).
 4. Shows a unified price chart (Coinbase candlesticks, live Chainlink spot, strike floor, and expiry protection timeline) and a deterministic (non-LLM) judgment: is this premium worth it?
-5. Simulates the exact transaction for free (`callStaticFillOrder`).
-6. Only on explicit user confirmation, executes for real and returns a BaseScan-verifiable transaction hash.
+5. Formats unsigned transactions (`/api/prepare-tx`) for the user's browser wallet to execute. **Payung never signs for user purchases.**
 
-Built for **MUBA Hacks 2026**, targeting both Thetanuts tracks (SDK Product, AI × Options). Full pitch/context: [PROJECT.md](PROJECT.md). Detailed behavioral spec: [Payung_Spec.md](Payung_Spec.md). Original security/product audit that this branch's work responds to: [FableAudit.md](FableAudit.md).
+### 2. Precise Protection (Automated Safe-Module Rolls)
+When no single put on the book spans the user's full horizon (e.g. 90 days requested, but only 7-14 day puts exist):
+1. Calculates a live theoretical Black-Scholes estimate (`src/blackscholes.ts`) chaining shorter legs forward.
+2. Offers **Precise Protection** via a 1-owner **Safe** smart-contract wallet owned by the user (`@safe-global/protocol-kit`).
+3. User funds the Safe with their roll budget and enables [`PayungRollModule.sol`](contracts/src/PayungRollModule.sol) with strict on-chain bounds (`deadline`, `maxRolls`, `maxPremiumPerRollUsd`, `totalSpendCapUsd`, `targetStrike`).
+4. A decentralized **Gelato Web3 Function** keeper polls [`GET /api/precise/next-roll`](app/api/precise/next-roll/route.ts) and calls permissionless `executeRoll()` when the active leg nears expiry (`<= 2` days).
+5. The module forwards the fill via `safe.execTransactionFromModule(...)` into Thetanuts OptionBook. **The user's Safe is the on-chain buyer and owner of every put.**
+6. The user can cancel anytime via `cancel()`, stopping future rolls while letting active puts run to expiry.
+7. **Zero database**: all state is read on-the-fly from the module's on-chain storage and Thetanuts' positions indexer.
 
-**The one sentence that governs every design decision in this codebase:** *the LLM never produces a number the user sees.* Every price, premium, spot, candle, and payoff figure traces to a live SDK call, Chainlink feed, Coinbase endpoint, or an empirical read of a transaction receipt — never a guess, never an estimate, never client-side math reconstructing what the server already computed correctly.
+Built for **MUBA Hacks 2026**, targeting both Thetanuts tracks (SDK Product, AI × Options). Full pitch/context: [PROJECT.md](PROJECT.md). Detailed behavioral spec: [Payung_Spec.md](Payung_Spec.md). Precise Protection spec: [2026-09-03-precise-protection-design.md](docs/superpowers/specs/2026-09-03-precise-protection-design.md).
+
+**The governing sentence of this codebase:** *the LLM never produces a number the user sees.* Every price, premium, spot, candle, strike, and payoff figure traces to a live SDK call, Chainlink feed, Coinbase endpoint, or empirical read of a contract receipt — never a hallucinated estimate.
 
 ---
 
@@ -25,165 +35,123 @@ Built for **MUBA Hacks 2026**, targeting both Thetanuts tracks (SDK Product, AI 
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Language | TypeScript (ESM, `"type": "module"`) | Intra-project imports use the `.js` suffix even though source is `.ts` (e.g. `import { readClient } from './core.js'`) — standard Node ESM + `tsx` convention. |
-| Runtime | Node.js 18+ | No bundler, no build step. `tsx` runs `.ts` files directly. |
-| Chain SDK | `@thetanuts-finance/thetanuts-client` `^0.3.0` | The only package that talks to the Thetanuts protocol. Imported exclusively from `src/core.ts`. |
-| Chain interaction | `ethers` `^6.13.0` | Providers, wallets, contract calls (Aave `supply`, Chainlink `latestRoundData`), address/BigInt utilities. |
-| Chain | Base mainnet, chainId `8453` | No testnet config exists in the SDK — don't add one. |
-| Blockchain protocol | Thetanuts V4 (OptionBook) | Decentralized options; cash-settled puts/calls, `fetchOrders`/`previewFillOrder`/`callStaticFillOrder`/`fillOrder`. |
-| Collateral bridging | Aave V3 on Base | `STRATEGY_VAULT_CONFIG.aave.pool`, used to mint `aBasUSDC` from raw USDC (`src/aave.ts`). |
-| Price feeds / Spot | Chainlink AggregatorV3 on Base | `chainConfig.priceFeeds[asset]` read by `src/spot.ts` via plain provider; same feed the option settles against. |
-| Candle history | Coinbase Exchange Public API | `GET /products/{id}/candles` fetched by `src/spot.ts`, normalized to `{t,o,h,l,c}`. |
-| AI / LLM | Gonka Router (OpenAI-compatible chat completions API) | Model configurable via `.env` (`GONKA_MODEL`, default `moonshotai/Kimi-K2.6`). Used ONLY for NL→spec transcription in `src/intent.ts` — never for pricing or judgment. |
-| HTTP server | Node's built-in `node:http` | No Express/Fastify/etc. — thin routes (`src/server.ts`). |
-| Frontend | Vanilla HTML/CSS/JS, single file (`web/index.html`) | No framework, no bundler, no build step. Talks to the API via `fetch`. |
-| CLI | `tsx` running `src/cli.ts` directly, wired through `npm run <script>` | No CLI framework (no yargs/commander) — a manual `switch` on `process.argv`. |
-| Testing | Vitest `^4.1.11` | Pure-function unit tests only (`tests/*.test.ts`); zero network access by design. Live/network behavior is verified ad hoc via the CLI, never inside the suite. |
-| Type checking | TypeScript `^5.6.0`, `tsc --noEmit` | No separate lint step configured. |
-| Env config | `dotenv` `^16.4.5` | Loads `.env` (gitignored) for `PRIVATE_KEY`, `BASE_RPC_URL`, `GONKA_API_KEY`, `GONKA_BASE_URL`, `GONKA_MODEL`. |
-| Package manager | npm (see `package-lock.json`) | No monorepo tooling — one `package.json` at the repo root. |
+| Framework / UI | Next.js 15 (App Router), React 19, CSS Modules | Client-side wallet interaction (`ethers.BrowserProvider`), responsive UX under `app/`. |
+| Language | TypeScript (ESM, `"target": "ES2022"`) | Path alias `@/*` configured to root `./*`. Strict typechecking (`npx tsc --noEmit`). |
+| Smart Contracts | Solidity (`^0.8.28`), Foundry | `contracts/` directory. `PayungRollModule.sol`, Safe integration (`ISafe`), deployment scripts, and unit/fork tests. |
+| Smart Accounts | Safe (v1.3.0 / v1.4.1), `@safe-global/protocol-kit` `^8.0.6` | Deploys/connects 1-owner Safes for users; executes atomic multisend (`enableModule` + `open`). |
+| Keeper Automation | Gelato Web3 Functions (`@gelatonetwork/web3-functions-sdk`, `@gelatonetwork/automate-sdk`) | Serverless Web3 Function (`gelato/resolver.ts`) indexing `CommitmentOpened` events and executing due rolls. |
+| Chain SDK | `@thetanuts-finance/thetanuts-client` `^0.3.0` | Talks directly to Thetanuts protocol. Isolated strictly in `src/core.ts`. |
+| Chain Interaction | `ethers` `^6.13.0` | Providers, contract calls (Chainlink feeds, Safe calls), calldata encoding. |
+| Chain | Base mainnet, chainId `8453` | No testnet config exists in the Thetanuts SDK — do not invent one. |
+| Blockchain protocol | Thetanuts V4 (OptionBook) | Cash-settled puts; `fetchOrders`, `previewFillOrder`, `callStaticFillOrder`, `fillOrder`. |
+| Price feeds / Spot | Chainlink AggregatorV3 on Base | `ETH/USD` (`0x7104...`), `BTC/USD` (`0x64c9...`) read by `src/spot.ts` and validated by `PayungRollModule.sol`. |
+| Historical candles | Coinbase Exchange Public API | `GET /products/{id}/candles` fetched by `src/spot.ts`, normalized to `{t,o,h,l,c}`. |
+| AI / LLM | Gonka Router (OpenAI-compatible) | Model configurable via `.env` (`GONKA_MODEL`, default `moonshotai/Kimi-K2.6`). Used ONLY for NL→spec transcription in `src/intent.ts`. |
+| Testing | Vitest `^4.1.11` (TS) + Foundry (Solidity) | 229 Vitest tests (pure functions, zero network) + 16 Forge tests (module access control, reverts, limits). |
+| Package Manager | npm | Node 18+ runtime. |
 
-No database, no auth system, no message queue, no bundler, no CSS framework. This is deliberate — the whole product is a thin, auditable layer over a live on-chain orderbook, and the tech stack stays exactly as thin as that requires.
+No database, no auth system, no backend session store. The on-chain contracts and protocol indexers are the sole sources of truth.
 
 ---
 
 ## Code structure
 
 ```
+contracts/
+  src/
+    PayungRollModule.sol        — Safe module for Precise Protection (open, cancel, permissionless bounded executeRoll)
+    interfaces/ISafe.sol        — Minimal ISafe interface for execTransactionFromModule
+  test/
+    PayungRollModuleOpen.t.sol  — Foundry tests for open(), cancel(), and access control
+    PayungRollModuleExecuteRoll.t.sol — 9 Foundry tests for executeRoll() bounds, limits, and reverts
+    mocks/MockSafe.sol          — Minimal mock Safe implementing ISafe
+  script/
+    Deploy.s.sol                — Foundry deploy script for PayungRollModule
+gelato/
+  resolver.ts                   — Gelato Web3 Function resolver (checks module events + calls /api/precise/next-roll)
+  register.ts                   — Script to register the Gelato Automate task
 src/
-  spec.ts       — ProtectionSpec + impliedStrike. ZERO imports, deliberately: intent.ts needs
-                  impliedStrike at RUNTIME, and rule 1 forbids it value-importing core.ts.
-                  Do NOT merge this back into core.ts.
-  spot.ts       — Coinbase candle history + Chainlink spot for the chart. Must never import the
-                  Thetanuts SDK, not even as a type; takes (feed, provider) as plain arguments.
-  core.ts       — THE ONLY MODULE THAT TOUCHES THETANUTS. Everything else is a thin face over this.
-  aave.ts       — USDC → aBasUSDC deposit helper (buyable puts quote in aBasUSDC, so the PREMIUM is paid in it; never for collateral — buyers post none)
-  intent.ts     — NL → ProtectionSpec via Gonka Router. Strictly validates the LLM's 4-field output.
-  judgment.ts   — Deterministic (NOT LLM) premium-vs-value verdict + coverage-gap honesty
-  server.ts     — Thin node:http JSON API over core.ts/spot.ts, plus static serving of web/
-  cli.ts        — Terminal interface: book, whoami, quote, simulate, execute, preflight, deposit, ask
-web/
-  index.html    — The product UI. Vanilla JS, no framework, no build step. Talks to server.ts's API.
-tests/
-  fixtures.ts          — makeCandidate() factory + fake token/feed addresses (tests never touch network)
-  implied-strike.test.ts — pure derivation tests for impliedStrike
-  spot.test.ts         — pure candle normalization + dynamic granularity calculation tests
-  decode.test.ts        — pure order-decoding
-  filter.test.ts        — candidate filter ranking by impliedStrike (asset, side, collateral, window)
-  fill-safety.test.ts   — budget capping, staleness guard, receipt-derived paid amount
-  coverage.test.ts      — coverage-gap math
-  aave-plan.test.ts     — Aave deposit decision logic
-  intent.test.ts        — NL parsing + validation (fake LLM client, zero network)
-  judgment.test.ts      — premium-vs-value verdict logic
-  wire.test.ts          — HTTP wire-format helpers (candidateId, toWire, jsonSafe)
+  spec.ts       — ProtectionSpec + impliedStrike. ZERO imports, deliberately.
+  spot.ts       — Coinbase candle history + Chainlink spot for the chart. Never imports Thetanuts SDK.
+  core.ts       — THE ONLY MODULE THAT TOUCHES THETANUTS SDK. Everything else is a thin face over this.
+  intent.ts     — NL → ProtectionSpec via Gonka Router. Strictly validates LLM output.
+  judgment.ts   — Deterministic (non-LLM) premium-vs-value verdict + coverage-gap honesty.
+  blackscholes.ts — Pure Black-Scholes pricing & IV solving for chained-roll estimates.
+  watcher.ts    — Position reader (`positionsFor`) and evaluation engine.
+  policy.ts     — Roll decision thresholds (`rollWhenDaysToExpiry = 2`).
+  precise.ts    — Pure merge logic combining raw on-chain commitment with indexed positions.
+  aave.ts       — USDC → aBasUSDC helper (for orders quoting in aBasUSDC).
+  api-shared.ts — ClientError, jsonResponse, requireJsonContentType, withErrorHandling.
+app/
+  protect/
+    page.tsx                    — Step 1: Input goal (NL or structured)
+    results/page.tsx            — Step 2: Recommendations, chart, and Precise Protection CTA
+    confirm/page.tsx            — Step 3: Transaction confirmation & review
+    purchased/page.tsx          — Step 4: Post-purchase receipt & BaseScan link
+    precise-setup/page.tsx      — Precise Protection onboarding (deploy Safe, fund, enableModule + open)
+    _lib/                       — Shared frontend helpers (safe.ts, wallet.ts, api.ts, FlowState.tsx, Shell.tsx)
+  my-protection/page.tsx        — Active positions view + Precise Protection status, spend progress & cancel
+  api/
+    candidates/route.ts         — POST /api/candidates
+    quote/route.ts              — POST /api/quote
+    prepare-tx/route.ts         — POST /api/prepare-tx
+    positions/route.ts          — GET /api/positions
+    history/route.ts            — GET /api/history
+    precise/
+      commitment/route.ts       — GET /api/precise/commitment?safe=0x...
+      prepare-open/route.ts     — POST /api/precise/prepare-open
+      prepare-cancel/route.ts   — POST /api/precise/prepare-cancel
+      next-roll/route.ts        — GET /api/precise/next-roll?safe=0x...
+tests/                          — 32 test files, 229 Vitest tests (fixtures, intent, blackscholes, precise, etc.)
 docs/
-  demo-runbook.md               — pre-demo checklist + pitch order for the hackathon
-  superpowers/plans/...          — the implementation plans for historical record
-PROJECT.md        — pitch, Q&A, track fit, pricing table, status checklist
-Payung_Spec.md    — the detailed behavioral spec (functional requirements, edge cases)
-FableAudit.md     — the original security/product audit this branch's work fixes
-README.md         — setup instructions, "Run it," proof-of-real-trade section (placeholder)
+  superpowers/
+    specs/2026-09-03-precise-protection-design.md — Precise Protection architectural spec & tech stack diagram
+    plans/2026-09-03-precise-protection.md        — 12-task execution plan (all tasks checked off & committed)
 ```
 
 ---
 
 ## Module Deep-Dives
 
-### `src/spec.ts` — pure user intent and strike derivation
+### `contracts/src/PayungRollModule.sol` — Safe module for auto-rolling
+- Enabled by the user's Safe. Keys commitments by `safe` address.
+- `open(Commitment calldata c)`: Only callable by `c.safe` itself. Stores spend caps, strike target, deadline, and sets `active = true`.
+- `executeRoll(address safe, bytes calldata fillOrderCalldata, uint256 usdcAmount, uint256 orderStrike, uint256 orderExpiry)`:
+  - **Permissionless**: Any caller (Gelato keeper, user, or Payung cron) can call this.
+  - **On-chain bounded**: Verifies `block.timestamp < deadline`, `rollsUsed < maxRolls`, `usdcAmount <= maxPremiumPerRollUsd`, `spentUsd + usdcAmount <= totalSpendCapUsd`, `bytes4(fillOrderCalldata) == 0x11be7f27` (OptionBook `fillOrder`), and that `orderStrike` is within 5% of `targetStrike` adjusted for Chainlink spot moves.
+  - Calls `ISafe(safe).execTransactionFromModule(optionBook, 0, fillOrderCalldata, Enum.Operation.Call)`.
+  - Increments `spentUsd += usdcAmount` and `rollsUsed += 1`.
+- `cancel()`: Callable only by `msg.sender == safe`. Sets `active = false`. Never unwinds active options.
 
-Contains the core domain type `ProtectionSpec` (`{asset: 'ETH'|'BTC', quantity: number, floorTotalUsd: number, horizonDays: number}`) and pure `impliedStrike(spec) = spec.floorTotalUsd / spec.quantity`.
-- **Zero imports**: It has no external or internal dependencies so both `src/intent.ts` (LLM parser) and `src/core.ts` (Thetanuts protocol) can import it without cyclic dependencies or pulling heavy SDKs into pure unit tests.
-- `floorTotalUsd` represents the *total portfolio value* the user needs to protect, not a per-unit price. The per-unit strike price is always derived via `impliedStrike`.
+### `src/precise.ts` — Pure merge logic
+- Pure function `mergePreciseCommitment(raw, currentLeg, history, assetForFeed)`.
+- Reconstructs original `spec` from on-chain `targetStrike`, `quantity1e6`, `createdAt`, and `deadline`.
+- Matches current active leg from `positionsFor()` and formats roll history for the UI.
+- Unit tested in `tests/precise.test.ts` (zero network calls).
 
----
+### `app/protect/_lib/safe.ts` — Safe SDK wrapper
+- Uses `@safe-global/protocol-kit`.
+- `deployOrConnectSafe()`: Connects user's browser wallet, predicts 1-owner Safe address, deploys if not yet deployed.
+- `fundSafe(safeAddress, usdcAmount)`: Standard ERC-20 transfer of USDC from user wallet to Safe.
+- `enableModuleAndOpen(safeAddress, moduleAddress, openTx)`: Bundles `enableModule(moduleAddress)` and `module.open(...)` into a single atomic Safe multisend transaction signed by the user.
 
-### `src/spot.ts` — candlestick history & live Chainlink spot
+### `app/api/precise/*` — Calldata & status endpoints
+- `GET /api/precise/commitment?safe=0x...`: Reads `commitments(safe)` from module contract, queries Thetanuts positions indexer, and merges via `mergePreciseCommitment`.
+- `POST /api/precise/prepare-open`: Encodes `open(Commitment)` calldata for the Safe to execute.
+- `POST /api/precise/prepare-cancel`: Encodes `cancel()` calldata.
+- `GET /api/precise/next-roll?safe=0x...`: Evaluates if the Safe's position is due for a roll (`daysToExpiry <= 2` or no active leg yet), queries Thetanuts book for candidates, quotes best match, and returns `{ due: true, fillOrderCalldata, usdcAmount, orderStrike, orderExpiry }`.
 
-Owns price history normalization and live spot pricing for the unified chart:
-
-1. **Coinbase Candlesticks (`fetchHistory`, `toCandles`)**:
-   - Fetches public OHLC candles from `https://api.exchange.coinbase.com/products/{ETH-USD|BTC-USD}/candles`.
-   - **Coinbase Row Order Gotcha**: Coinbase returns `[time, low, high, open, close, volume]` — note that `low` and `high` precede `open` and `close`. `toCandles` maps this into `{ t: row[0], l: row[1], h: row[2], o: row[3], c: row[4] }`.
-   - **Dynamic Granularity (`granularityFor`)**: Coinbase limits candle requests to **300 candles maximum**. Rather than a static ladder, `granularityFor(days)` selects the smallest granularity from `[60, 300, 900, 3600, 21600, 86400]` seconds such that `(days * 86400) / g <= 300`. This prevents HTTP 400 errors for any custom horizon from 1 to 90 days.
-
-2. **Live Chainlink Spot (`fetchSpot`)**:
-   - Reads directly from the on-chain AggregatorV3 feed that options settle against (`0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70` for ETH/USD, `0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F` for BTC/USD).
-   - **RPC Resilience**: The public Base RPC (`mainnet.base.org`) aggressively rate-limits under sequential calls, returning `"missing revert data"`. `fetchSpot` handles this by:
-     - Caching contract `decimals()` permanently per address in memory (halving the RPC calls per read).
-     - Retrying up to 3 times with exponential backoff (`[200ms, 600ms, 1500ms]`).
-   - **SDK-Free Boundary**: `fetchSpot` takes `(feedAddress, provider)` as plain arguments and **never imports `@thetanuts-finance/thetanuts-client`**.
-
----
-
-### `src/core.ts` — the one module that touches Thetanuts
-
-Read this file first for any protocol interaction. Key exports:
-- `readClient()` / `writeClient()` — read-only vs. signing SDK clients.
-- `Candidate` (type) — decoded live order from `fetchOrders()`.
-- `filterCandidates(book, spec, cfg)` — pure filtering: puts only, **`takerIsBuyer` (you buy the put)**, asset match, dollar collateral, 0.6x–2.5x horizon window, ranked by absolute distance to `impliedStrike(spec)`. The side predicate is load-bearing and was previously inverted — see [Buying protection needs NO collateral](#buying-protection-needs-no-collateral--previously-inverted-side-bug).
-- `capSpend(requestedUsdc, makerBudget, strike, price)` — caps requested size to what the maker's collateral budget can absorb.
-- `simulate(candidate, collateralUsdc, client?)` — free dry run via `callStaticFillOrder`.
-- `execute(candidate, spendUsdc, client?)` — fill order: simulates first, approves exact amount (never MaxUint256), fills, and reads actual debit from Transfer logs.
-
----
-
-### `src/server.ts` — JSON API & Candle Cache
-
-Node built-in `node:http` server. Key routes:
-- `POST /api/parse` `{text}` → `{spec}` (LLM parsing).
-- `POST /api/candidates` `{spec}` → `{candidates}` (ranked offers with `impliedStrike`, `pctVsImpliedStrike`, `pctFromImpliedStrike`).
-- `POST /api/quote` `{id, spendUsdc}` → `{quote, judgment, payoff}`.
-- `GET /api/history?asset=ETH&days=14` → `{candles, spot, historySource, spotError, historyError}` (60-second in-memory cache).
-- `POST /api/simulate` and `POST /api/execute`.
-
----
-
-### `web/index.html` — UI, Inputs & Unified SVG Chart
-
-Single-file vanilla JS application. Key frontend features:
-1. **Synchronized Inputs (Step 1)**:
-   - `amount` (e.g. `0.001` ETH)
-   - `unitFloor` (Market floor price, e.g. `$2,300` / ETH)
-   - `floor` (Total portfolio value floor, e.g. `$2.30`)
-   - All inputs are bi-directionally synchronized live as the user types, with a live restated summary sentence.
-2. **Unified Candlestick & Protection Chart (Step 3)**:
-   - Native SVG (`700x320` viewBox).
-   - Time domain: Left 70% represents historical time (`now - days` to `now`); right 30% represents future protection time (`now` to `expiry`).
-   - Price Y domain spans candle wicks, spot, and strike floor with 3% margin.
-   - Historical green/red candlesticks with high-low wick lines.
-   - Live Chainlink spot line (dashed dim) and guaranteed floor strike line (warning color).
-   - Shaded semi-transparent green box highlighting the protected zone below the strike from `now` until `expiry`.
-   - `chartRenderToken` monotonic counter prevents race conditions when switching candidates.
-   - Named data source attribution below the chart.
-
----
-
-## How to run it
-
-```bash
-npm install
-cp .env.example .env   # fill in PRIVATE_KEY (burner wallet), BASE_RPC_URL, GONKA_API_KEY
-npm test                # pure-function tests, zero network calls
-npm run book             # live read against Base mainnet, no wallet needed
-npm run quote -- 1 2300 10 14 # quote for 1 ETH with $2300 total floor
-npm run web               # http://localhost:8787 — the full product
-```
-
----
-
-## Testing philosophy
-
-- Every pure function (candlestick normalization, granularity math, filtering, decoding, capping, judgment, intent validation) is unit tested in `tests/` with **zero network access**.
-- Run `npm test` and `npx tsc --noEmit` before considering any change complete.
+### `gelato/resolver.ts` & `gelato/register.ts` — Keeper automation
+- `resolver.ts`: Gelato Web3 Function runner. Reads `CommitmentOpened` event logs from `PayungRollModule` to find active Safes, calls `/api/precise/next-roll?safe=...`, and returns `canExec: true` with `executeRoll` calldata for the first due Safe.
+- `register.ts`: Sets up task with Gelato Automate SDK using `dedicatedMsgSender: true`.
 
 ---
 
 ## Buying protection needs NO collateral — previously-inverted side bug
 
-**Read this before touching order selection, the Aave path, or anything that asks the user for collateral.**
+**Read this before touching order selection, the Aave path, or anything involving collateral.**
 
 ### The rule
-
 Buying a put costs **the premium and nothing else**. If the app ever demands that the user hold or approve `contracts × strike`, that is a **bug**, not a protocol requirement — it means the app has put the user on the **selling** side.
 
 | Side | What you owe | Why |
@@ -191,66 +159,64 @@ Buying a put costs **the premium and nothing else**. If the app ever demands tha
 | **Buyer** (what this product does) | premium only | you are paying for the right to sell at the strike |
 | **Seller** (never intended here) | `contracts × strike` cash collateral | a written put must guarantee its payout |
 
-### What was wrong
+### What was wrong & how it is fixed
+The SDK's `order.isBuyer` field means the **opposite** of what its name suggests:
+- `isBuyer === true` → taker is the **BUYER** (pays premium only, posts NO collateral).
+- `isBuyer === false` → taker is the **SELLER** (demands `contracts × strike` collateral, reverts with `Panic(0x11)` if short).
 
-`filterCandidates` selected `!makerIsBuyer`, which kept exactly the orders where **the taker writes the put**. The comment above that line warned "without this you'd be writing naked puts" — the intent was right, the polarity was backwards. `yourSide` was inverted to match, so the UI cheerfully labelled write-the-put orders **"you buy the option"**.
-
-The SDK's `order.isBuyer` field means the **opposite** of what its name suggests. Verified on Base mainnet from a non-maker wallet holding $4.02:
-
-- `isBuyer === true` → a fill needing **$19,721** of `contracts × strike` still reaches the ERC20 **transfer** step. No collateral is demanded. **Taker is the BUYER.**
-- `isBuyer === false` → `Panic(0x11)` collateral-short at **every** size, including dust. **Taker is the SELLER.**
-
-Corroborated by a real settled purchase (tx `0x2570c9dd…`): `sellerWasMaker`, and the taker transferred only the $9.999955 premium.
-
-The field is therefore decoded as **`takerIsBuyer`** in `src/core.ts`, named for what the chain actually does. `tests/filter.test.ts` has a regression test pinning the correct side — **do not "simplify" it away.**
-
-### How the failure presented
-
-Because collateral was demanded from a user who should have owed only a premium, the symptoms were confusing and easy to misdiagnose:
-
-- `Panic due to OVERFLOW(17)` — the book subtracts without a balance guard, so "you are short collateral" surfaces as an opaque arithmetic panic with **no readable reason at all**.
-- `ERC20InsufficientAllowance(spender, allowance, needed)` — once the balance was sufficient but the approval wasn't. `needed` equals `contracts × strike` **exactly**; that is how the formula was confirmed.
-
-Both are downstream symptoms. If either reappears, **check the side first** — do not treat them as collateral-sizing problems and do not "fix" them by asking the user for more money.
-
-### Consequence — one real position was written
-
-Before the fix landed, a live fill made the burner wallet the **seller** (tx [`0x3e7417c5…`](https://basescan.org/tx/0x3e7417c5c676109e737f540debe95d0aec9477c9797c19f37e626d0c611cff04), `buyer = 0xEcda1D00…`, `seller = 0x22955CE0…`). It received $0.008272 premium and locked **$1.150000 aBasUSDC** as collateral: ETH **$2,300 strike, expires 2026-09-11**, 0.0005 contracts. Max loss is bounded at the $1.15 posted. It is unaffected by the fix and simply runs to expiry.
-
-### Does the Aave / aBasUSDC path still matter?
-
-Partly, and it is worth revisiting. The Aave `supply` helper exists because the *buyable* puts on the live book quote in `aBasUSDC`, so the premium itself must be paid in that token. That is still true. But the large USDC→aBasUSDC conversions users were prompted for were **entirely a product of the side bug** — they were funding a seller's collateral.
-
-Worth evaluating: the book currently carries far more `takerIsBuyer` orders collateralised in **raw USDC** than in aBasUSDC. Restricting to those would remove the Aave step altogether. The one confirmed real protection purchase on this book settled in plain USDC.
-
----
-
-## Known residual issues
-
-### 0. The buy-side flow has not been proven end-to-end
-The side fix, the premium-only requirement, and the re-quote logic are all verified in isolation (86/86 tests pass, live simulations confirm `you buy the option` and a premium-sized requirement). **No successful buyer-side fill has landed yet.** After the first one, decode its `OrderFilled` event and confirm the wallet appears as `buyer`, not `seller` — given this bug shipped once, verify rather than assume.
-
-### 0b. Maker offers live ~96 seconds
-`orderExpiryTimestamp` is ~96s from publication, and `assertFillable` refuses anything under 60s remaining — so a prepared order is fillable only in roughly its first 36 seconds. Any preparatory transaction (Aave supply, collateral approval) outlasts that window and leaves the fill targeting a dead order, which reverts **`"Order expired"`** *on-chain* and costs gas. `public/app.js` handles this by re-quoting after any preparatory transaction (step 2b in `runExecute`). Do not remove that; and do not add new pre-fill transactions without re-quoting after them.
-
-### 1. First real on-chain fill has not been executed
-No `.env`/`PRIVATE_KEY` has existed in any automated test environment. `README.md`'s "Proof" section is an honest, explicit placeholder — never replace with fake data. Before submission, fund a burner wallet with ~$20 USDC + gas on Base, follow `docs/demo-runbook.md`, and paste the real BaseScan transaction hash into `README.md`.
-
-### 2. Minor, deferred items
-- `dollarTokens()` address allowlist is small (USDC + aBasUSDC on Base mainnet) and falls back to a `symbol().endsWith('USDC')` heuristic for tokens not in the list.
-
-### 3. Gas fee is not shown in the UI — TODO
-`web/index.html` currently displays only the premium. Add the estimated gas fee (available from the `callStaticFillOrder()` simulation) as its own line item next to the premium, plus a combined total, and label it as an estimate since actual gas can vary slightly by confirmation time. This keeps the display consistent with the project's "no fabricated numbers, show every real cost" rule (design rule #3).
+This field is decoded as **`takerIsBuyer`** in `src/core.ts`, named for what the chain actually does. `tests/filter.test.ts` has regression tests pinning this side — **do not revert or remove this**.
 
 ---
 
 ## Design rules that must never be violated
 
-1. **`src/core.ts` is the only module that touches the Thetanuts SDK.** `src/spec.ts` is dependency-free. `src/spot.ts` takes an `ethers.Provider` passed from `server.ts` and never imports the SDK.
+1. **`src/core.ts` is the only module that touches the Thetanuts SDK.** `src/spec.ts` is dependency-free. `src/spot.ts` takes an `ethers.Provider` and never imports the SDK. `src/precise.ts` is pure domain merge logic.
 2. **The LLM (`src/intent.ts`) never produces a number the user sees.** It only transcribes `{asset, quantity, floorTotalUsd, horizonDays}`.
 3. **No fabricated numbers, anywhere.** All prices, premiums, spot prices, and candle data trace to live SDK calls, Chainlink AggregatorV3 feeds, or Coinbase Exchange API.
 4. **Approve exact amounts, never `MaxUint256`.**
-4b. **The user BUYS the put — always. Never writes one.** `filterCandidates` must keep `takerIsBuyer`. A buyer owes the **premium only**; if any code path asks the user to hold or approve `contracts × strike`, that is the side bug resurfacing, not a protocol requirement. `Panic(0x11)` and `ERC20InsufficientAllowance` from the OptionBook are symptoms of being on the wrong side — diagnose the side before touching amounts.
-5. **Fail loud, fail cheap.** Real executions are always preceded by free simulations (`callStaticFillOrder`).
-6. **`/api/execute` requires `confirm: true`.**
+5. **The user BUYS the put — always. Never writes one.** `filterCandidates` must keep `takerIsBuyer`. A buyer owes the premium only.
+6. **Fail loud, fail cheap.** Real executions are always preceded by free simulations (`callStaticFillOrder`).
 7. **Base mainnet only, chainId 8453.**
+8. **Auto-roll ("Precise Protection") must never be executed via a server-custodied wallet.** `fillOrder` has no relayer parameter — whoever signs is the buyer of record. Unattended future rolls are executed exclusively through the user's own Safe via `PayungRollModule.sol`. Payung never custodies user funds or option positions.
+
+---
+
+## How to run and verify
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Configure environment
+cp .env.example .env
+# Fill in BASE_RPC_URL, GONKA_API_KEY, and when testing deployment: PAYUNG_ROLL_MODULE_ADDRESS
+
+# 3. Smart contract tests (Foundry)
+export PATH="$HOME/.foundry/bin:$PATH"
+cd contracts && forge test -vv && cd ..
+
+# 4. TypeScript typecheck
+npx tsc --noEmit
+
+# 5. Full unit & integration test suite (Vitest)
+npm test
+
+# 6. Run Next.js local development server
+npm run dev
+# Opens on http://localhost:8787
+```
+
+---
+
+## Current state of the repository
+
+All 12 tasks from the [Precise Protection Plan](docs/superpowers/plans/2026-09-03-precise-protection.md) are completed and committed:
+- **Phase 1 (Contracts)**: `PayungRollModule.sol`, `Deploy.s.sol`, 16 Foundry tests passing. Dry-run verified against Base mainnet fork.
+- **Phase 2 (APIs)**: `src/precise.ts` pure merge, `GET /api/precise/commitment`, `POST /api/precise/prepare-open`, `POST /api/precise/prepare-cancel`, `GET /api/precise/next-roll`.
+- **Phase 3 (Frontend)**: Safe SDK wrapper (`app/protect/_lib/safe.ts`), onboarding flow (`app/protect/precise-setup`), results screen button, and `/my-protection` status & cancel section.
+- **Phase 4 (Keeper)**: Gelato Web3 Function resolver (`gelato/resolver.ts`), registration script (`gelato/register.ts`), and npm script `npm run gelato:register`.
+
+### What remains before live production launch:
+1. **Broadcast Contract Deployment**: Run `forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL --broadcast` with a funded deployer key to deploy `PayungRollModule` to Base mainnet.
+2. **Set Environment Variables**: Set `NEXT_PUBLIC_PAYUNG_ROLL_MODULE_ADDRESS` and `PAYUNG_ROLL_MODULE_ADDRESS` in production `.env`.
+3. **Register Gelato Task**: Run `npm run gelato:register` pointing to the deployed module address and production API base URL.

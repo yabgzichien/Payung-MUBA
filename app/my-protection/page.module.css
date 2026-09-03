@@ -1,0 +1,182 @@
+.header {
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 0 0 6px;
+}
+
+.subtitle {
+  font-size: 15px;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  padding: 26px 28px;
+  margin-bottom: 28px;
+}
+
+.cardTitle {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 0 0 18px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rowLabel {
+  font-size: 14.5px;
+  color: var(--text-dim);
+}
+
+.rowValue {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.rowValueGold {
+  color: var(--gold);
+}
+
+.rowValueAccent {
+  color: var(--accent);
+}
+
+.expiryBar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-subtle);
+  overflow: hidden;
+  margin: -2px 0 16px;
+}
+
+.expiryBarFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.metaLine {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sectionTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 0 0 16px;
+}
+
+.statsRow {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.statCell {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--subcard-bg);
+  padding: 18px 20px;
+}
+
+.statLabel {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 6px;
+}
+
+.statValue {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.statValueGold {
+  color: var(--gold);
+}
+
+.statSub {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.txBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 13.5px;
+  margin-bottom: 28px;
+}
+
+.txMeta {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.empty {
+  text-align: center;
+  padding: 60px 24px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.emptyTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin: 0 0 8px;
+}
+
+.emptyBody {
+  font-size: 14.5px;
+  color: var(--text-dim);
+  margin: 0 0 24px;
+}
+
+.rollHistory {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.rollHistory a {
+  color: var(--accent);
+}

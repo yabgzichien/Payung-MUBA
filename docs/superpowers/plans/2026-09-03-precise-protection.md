@@ -1601,7 +1601,7 @@ git commit -m "feat: add Set up Precise Protection button to the chain-shorter-p
 **Interfaces:**
 - Consumes: `fetchPreciseCommitment`/`fetchPrepareCancel` from `app/protect/_lib/api.ts` (both added in Task 9), `sendAndWait`/`getSigner` from `app/protect/_lib/wallet.ts` (unchanged — cancel is signed by the Safe owner's normal EOA the same way every other transaction in this app is signed).
 
-- [ ] **Step 1: Add state and a fetch effect**
+- [x] **Step 1: Add state and a fetch effect**
 
 In `app/my-protection/page.tsx`, add to the imports:
 
@@ -1627,7 +1627,7 @@ Extend the existing `useEffect` that fetches positions to also fetch the precise
 
 (Add this line directly after the existing `fetchPositions(wallet.address).then(...)` call inside that `useEffect`.)
 
-- [ ] **Step 2: Add the cancel handler**
+- [x] **Step 2: Add the cancel handler**
 
 Add a function near the existing `handleConnect`:
 
@@ -1650,7 +1650,7 @@ Add a function near the existing `handleConnect`:
   }
 ```
 
-- [ ] **Step 3: Render the section**
+- [x] **Step 3: Render the section**
 
 Add below the existing `{active.entryTxHash && (...)}` block, still inside the `active` branch's `<>...</>`:
 
@@ -1703,7 +1703,7 @@ Add below the existing `{active.entryTxHash && (...)}` block, still inside the `
           )}
 ```
 
-- [ ] **Step 4: Add the roll-history list style**
+- [x] **Step 4: Add the roll-history list style**
 
 Add to `app/my-protection/page.module.css`:
 
@@ -1724,16 +1724,16 @@ Add to `app/my-protection/page.module.css`:
 }
 ```
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: clean.
 
-- [ ] **Step 6: Verify in the browser**
+- [x] **Step 6: Verify in the browser**
 
 Navigate to `/my-protection` with a connected wallet. Confirm the page still renders correctly with `precise === null` (no Precise Protection section shown, no error) — this is the only state reachable without a live deployed module, so it's the one to actually verify end-to-end; the populated-state rendering can only be checked once Phase 1 is deployed.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd /home/yang/Project/MUBA

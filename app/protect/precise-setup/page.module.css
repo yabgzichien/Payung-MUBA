@@ -1,0 +1,55 @@
+.budgetRow {
+  margin: 20px 0;
+}
+
+.budgetLabel {
+  display: block;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.budgetInput {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--input-bg);
+  color: var(--text-bright);
+  font-size: 15px;
+}
+
+.budgetHint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.steps li {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.stepActive {
+  border-color: var(--accent-border);
+  color: var(--text-bright);
+  background: var(--accent-bg);
+}
+
+.stepDone {
+  border-color: var(--green-border);
+  color: var(--green-text);
+}

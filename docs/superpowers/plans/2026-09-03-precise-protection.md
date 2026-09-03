@@ -1291,7 +1291,7 @@ git commit -m "feat: Safe SDK wrapper for Precise Protection onboarding"
 - Consumes: `deployOrConnectSafe`/`fundSafe`/`enableModuleAndOpen` from Task 8; `/api/precise/prepare-open` from Task 7; `rollEstimate` from `useProtectionFlow()` (existing, from the chained-roll-estimate feature).
 - Produces: a working `/protect/precise-setup` route. Task 10 links to it.
 
-- [ ] **Step 1: Add wire types**
+- [x] **Step 1: Add wire types**
 
 Add to `app/protect/_lib/types.ts` (near the existing `RollEstimateCard`):
 
@@ -1311,7 +1311,7 @@ export type PreciseCommitmentWire = {
 export type PrepareOpenResponse = { to: string; data: string };
 ```
 
-- [ ] **Step 2: Add API wrappers**
+- [x] **Step 2: Add API wrappers**
 
 Add to `app/protect/_lib/api.ts`:
 
@@ -1340,7 +1340,7 @@ export async function fetchPreciseCommitment(safe: string): Promise<PreciseCommi
 
 Add the corresponding imports (`PrepareOpenResponse`, `PreciseCommitmentWire`) to the top of `app/protect/_lib/api.ts`.
 
-- [ ] **Step 3: Write the onboarding page**
+- [x] **Step 3: Write the onboarding page**
 
 Create `app/protect/precise-setup/page.tsx`:
 
@@ -1456,7 +1456,7 @@ export default function PreciseSetupPage() {
 }
 ```
 
-- [ ] **Step 4: Write `app/protect/precise-setup/page.module.css`**
+- [x] **Step 4: Write `app/protect/precise-setup/page.module.css`**
 
 Create `app/protect/precise-setup/page.module.css`:
 
@@ -1518,12 +1518,12 @@ Create `app/protect/precise-setup/page.module.css`:
 }
 ```
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/yang/Project/MUBA

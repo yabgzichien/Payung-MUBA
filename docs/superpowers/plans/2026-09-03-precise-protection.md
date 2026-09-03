@@ -965,7 +965,7 @@ git commit -m "feat: GET /api/precise/commitment — reads the module + position
 - Consumes: `impliedStrike`/`ProtectionSpec` from `src/spec.ts`, `validateSpec` from `src/intent.ts`, `readClient()`/`findCandidates()`/`quote()` from `src/core.ts`, `positionsFor()` from `src/watcher.ts` (all unchanged), `ClientError`/`jsonResponse`/`requireJsonContentType`/`withErrorHandling` from `src/api-shared.ts` (unchanged).
 - Produces: `POST /api/precise/prepare-open {spec, safe, maxPremiumPerRollUsd, totalSpendCapUsd, maxRolls}` → `{ to, data }` (unsigned, matching the shape `app/protect/_lib/types.ts`'s existing `PrepareTxResponse.approveOptionBookTx` already uses) — called from Task 9 (onboarding page). `POST /api/precise/prepare-cancel {safe}` → `{ to, data }` — called from Task 11 (`/my-protection`). `GET /api/precise/next-roll?safe=0x...` → `{ due: false } | { due: true, safe, fillOrderCalldata, usdcAmount, orderStrike, orderExpiry }` — called from Task 12's Gelato resolver; this is what lets that resolver stay a thin HTTP call instead of needing to hold a live `ThetanutsClient` inside Gelato's sandboxed runtime.
 
-- [ ] **Step 1: Write `prepare-open`**
+- [x] **Step 1: Write `prepare-open`**
 
 Create `app/api/precise/prepare-open/route.ts`:
 
@@ -1038,7 +1038,7 @@ export async function POST(req: Request) {
 }
 ```
 
-- [ ] **Step 2: Write `prepare-cancel`**
+- [x] **Step 2: Write `prepare-cancel`**
 
 Create `app/api/precise/prepare-cancel/route.ts`:
 
@@ -1066,7 +1066,7 @@ export async function POST(req: Request) {
 }
 ```
 
-- [ ] **Step 3: Write `next-roll`**
+- [x] **Step 3: Write `next-roll`**
 
 This is what the keeper (Task 12) actually calls. It does all the SDK-dependent work (reading positions, finding a replacement candidate, encoding the fill) server-side, so the Gelato resolver — which runs in a sandboxed runtime that cannot hold a live `ThetanutsClient` — only ever needs to make one HTTP call and forward the result.
 
@@ -1144,12 +1144,12 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 4: Typecheck**
+- [x] **Step 4: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /home/yang/Project/MUBA

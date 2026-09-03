@@ -1542,7 +1542,7 @@ git commit -m "feat: Precise Protection onboarding page — Safe deploy, fund, e
 - Consumes: `rollEstimate` from `useProtectionFlow()` (unchanged), `router.push` from `next/navigation`.
 - Produces: nothing new consumed elsewhere — this is a leaf UI change.
 
-- [ ] **Step 1: Add the button next to "Buy this first leg →"**
+- [x] **Step 1: Add the button next to "Buy this first leg →"**
 
 In `app/protect/results/page.tsx`, find:
 
@@ -1565,7 +1565,7 @@ Replace with:
           </div>
 ```
 
-- [ ] **Step 2: Add the layout style**
+- [x] **Step 2: Add the layout style**
 
 Add to `app/protect/results/page.module.css`:
 
@@ -1578,11 +1578,11 @@ Add to `app/protect/results/page.module.css`:
 }
 ```
 
-- [ ] **Step 3: Verify in the browser**
+- [x] **Step 3: Verify in the browser**
 
 Start the dev server (`preview_start` with the `payung-web` launch config), navigate through `/protect` → submit a goal that produces a `rollEstimate` (a horizon/floor combo the live book has no exact match for) → confirm both buttons render on the "Or chain shorter puts" card, and clicking "Set up Precise Protection →" navigates to `/protect/precise-setup` without a console error.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd /home/yang/Project/MUBA

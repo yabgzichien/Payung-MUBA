@@ -1,0 +1,107 @@
+.subtitle {
+  font-size: 15px;
+  color: var(--text-dim);
+  margin: 0 0 28px;
+}
+
+.quoteCard {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  padding: 24px 26px;
+  margin-bottom: 20px;
+}
+
+.quoteCardRecommended {
+  border-left-color: var(--accent);
+}
+
+.quoteLabel {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 18px;
+}
+
+.quoteLabelMuted {
+  color: var(--text-muted);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.rowLabel {
+  font-size: 14.5px;
+  color: var(--text-dim);
+}
+
+.rowValue {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.rowValueGold {
+  color: var(--gold);
+}
+
+.rowValueWarn {
+  color: var(--warn-text);
+}
+
+.rowValueOk {
+  color: var(--green-text);
+}
+
+.note {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  margin: 4px 0 18px;
+}
+
+.noteWarn {
+  color: var(--warn-text);
+}
+
+.estimateBox {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--subcard-bg);
+  padding: 14px 16px;
+  margin: 16px 0;
+}
+
+.estimateHeadline {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin: 0 0 6px;
+}
+
+.estimateSub {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.rollEstimateActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0;
+}

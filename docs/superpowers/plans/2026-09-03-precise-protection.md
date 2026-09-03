@@ -1173,14 +1173,14 @@ git commit -m "feat: prepare-open/prepare-cancel/next-roll routes — unsigned c
 
 **Flag before starting:** per Global Constraints, verify `@safe-global/protocol-kit`'s exact current API (package name, `Safe.init`/`SafeFactory` method names) against its published docs before writing this file — the code below is best-effort from established Safe SDK patterns, not independently doc-checked the way Task 12's Gelato integration was.
 
-- [ ] **Step 1: Add the dependency**
+- [x] **Step 1: Add the dependency**
 
 ```bash
 cd /home/yang/Project/MUBA
 npm install @safe-global/protocol-kit
 ```
 
-- [ ] **Step 2: Write `app/protect/_lib/safe.ts`**
+- [x] **Step 2: Write `app/protect/_lib/safe.ts`**
 
 Create `app/protect/_lib/safe.ts`:
 
@@ -1264,12 +1264,12 @@ function encodeEnableModule(moduleAddress: string): string {
 }
 ```
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: clean, OR type errors from `@safe-global/protocol-kit`'s real API not matching the best-effort calls above — if so, this is exactly the "re-verify before Task 8" flag from Global Constraints firing as intended; fix the calls against the installed package's actual `.d.ts` (`node_modules/@safe-global/protocol-kit/dist/**/*.d.ts`) rather than guessing further.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd /home/yang/Project/MUBA

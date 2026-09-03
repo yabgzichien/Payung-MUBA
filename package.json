@@ -21,7 +21,8 @@
     "build": "next build",
     "start": "next start -p 8787",
     "web": "next dev -p 8787",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gelato:register": "tsx gelato/register.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -34,6 +35,8 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@gelatonetwork/automate-sdk": "^3.1.0",
+    "@gelatonetwork/web3-functions-sdk": "^2.4.4",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",

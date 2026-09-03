@@ -1759,14 +1759,14 @@ git commit -m "feat: Precise Protection section in My Protection — history + c
 
 **Flag before starting:** per Global Constraints, this is the piece most likely to have moved since the spec was written (Gelato's Relay product was deprecated 3 days before this plan was written). Check `docs.gelato.cloud/web3-functions` for the current SDK's exact resolver export shape before writing `gelato/resolver.ts` — the code below is a best-effort sketch of the well-established resolver pattern (return `{canExec, callData}`), not a doc-verified final implementation.
 
-- [ ] **Step 1: Add the dependencies**
+- [x] **Step 1: Add the dependencies**
 
 ```bash
 cd /home/yang/Project/MUBA
 npm install --save-dev @gelatonetwork/web3-functions-sdk @gelatonetwork/automate-sdk
 ```
 
-- [ ] **Step 2: Write the resolver**
+- [x] **Step 2: Write the resolver**
 
 The resolver only needs a plain `ethers.Provider` read against the module (to discover which Safes have ever opened a commitment — a genuinely light read Gelato's sandboxed runtime can do directly) and one `fetch` per Safe against Task 7's `next-roll` endpoint (which does all the SDK-dependent work). It never needs a `ThetanutsClient` or `positionsFor()` itself.
 
@@ -1812,7 +1812,7 @@ Web3Function.onRun(async (context: Web3FunctionContext) => {
 });
 ```
 
-- [ ] **Step 3: Write the registration script**
+- [x] **Step 3: Write the registration script**
 
 Create `gelato/register.ts`:
 
@@ -1845,7 +1845,7 @@ main().catch((e) => {
 });
 ```
 
-- [ ] **Step 4: Add the npm script**
+- [x] **Step 4: Add the npm script**
 
 Add to `package.json`'s `"scripts"`:
 
@@ -1853,14 +1853,14 @@ Add to `package.json`'s `"scripts"`:
     "gelato:register": "tsx gelato/register.ts",
 ```
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 Add `"gelato/**/*.ts"` to the `include` array in `tsconfig.json` (alongside the existing `src/**/*.ts`, `app/**/*.ts`, `mcp/**/*.ts` entries).
 
 Run: `npx tsc --noEmit`
 Expected: clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /home/yang/Project/MUBA

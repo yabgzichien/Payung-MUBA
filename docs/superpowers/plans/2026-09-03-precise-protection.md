@@ -660,7 +660,7 @@ git commit -m "feat: PayungRollModule deploy script"
 - Consumes: `ShapedPosition` (from `src/positions.ts`), `ProtectionSpec` (from `src/spec.ts`).
 - Produces: `PreciseCommitment` type, `mergePreciseCommitment(raw, currentLeg, history, assetForFeed)` — Task 6's API route consumes this exact function and type, and supplies a real `assetForFeed` backed by `client.chainConfig.priceFeeds`.
 
-- [ ] **Step 1: Add the fixture factory**
+- [x] **Step 1: Add the fixture factory**
 
 Add to `tests/fixtures.ts` (after `makeCandidate`):
 
@@ -689,7 +689,7 @@ export function makeRawOnChainCommitment(over: Partial<RawOnChainCommitment> = {
 
 (`FEED_ETH` already exists at the top of this file, defined for `makeCandidate`.)
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `tests/precise.test.ts`:
 
@@ -745,12 +745,12 @@ describe('mergePreciseCommitment', () => {
 });
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `npx vitest run tests/precise.test.ts`
 Expected: FAIL — `src/precise.ts` does not exist.
 
-- [ ] **Step 4: Implement `src/precise.ts`**
+- [x] **Step 4: Implement `src/precise.ts`**
 
 Create `src/precise.ts`:
 
@@ -827,17 +827,17 @@ export function mergePreciseCommitment(
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/precise.test.ts`
 Expected: 5 passed.
 
-- [ ] **Step 6: Typecheck and run the full suite**
+- [x] **Step 6: Typecheck and run the full suite**
 
 Run: `npx tsc --noEmit && npx vitest run`
 Expected: clean typecheck, all tests pass (no regressions).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd /home/yang/Project/MUBA

@@ -1,4 +1,6 @@
 import type { Candidate } from '../src/core.js';
+import type { RawOnChainCommitment } from '../src/precise.js';
+export type { RawOnChainCommitment };
 
 // Fake but valid-shaped addresses. Tests never touch the network.
 export const FEED_ETH = '0x00000000000000000000000000000000000000e1';
@@ -26,3 +28,22 @@ export function makeCandidate(over: Partial<Candidate> = {}): Candidate {
     ...over,
   };
 }
+
+export function makeRawOnChainCommitment(over: Partial<RawOnChainCommitment> = {}): RawOnChainCommitment {
+  return {
+    safe: '0x00000000000000000000000000000000000005afe',
+    active: true,
+    underlyingFeed: FEED_ETH,
+    quantity1e6: 1_000_000n,
+    targetStrike: 222_500_000_000n, // $2,225 at 1e8
+    createdAt: 1_800_000_000n,
+    deadline: 1_802_592_000n, // +30 days
+    maxPremiumPerRollUsd: 25_000_000n,
+    totalSpendCapUsd: 100_000_000n,
+    spentUsd: 0n,
+    maxRolls: 10n,
+    rollsUsed: 0n,
+    ...over,
+  };
+}
+

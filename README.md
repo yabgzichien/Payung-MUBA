@@ -122,7 +122,7 @@ flowchart LR
     end
 
     subgraph AI["AI / LLM"]
-        Groq["Groq (OpenAI-compatible)<br/>NL to structured spec only"]
+        Groq["Groq (OpenAI-compatible)"]
     end
 
     subgraph Chain["Base mainnet"]
@@ -164,7 +164,7 @@ flowchart LR
 | Smart accounts | Safe (`@safe-global/protocol-kit`) |
 | Smart contracts | Solidity 0.8.28, Foundry (`contracts/`) |
 | Keeper automation | Gelato Web3 Functions (`@gelatonetwork/web3-functions-sdk`, `@gelatonetwork/automate-sdk`) |
-| AI / LLM | Groq, OpenAI-compatible, used only for natural-language-to-spec parsing |
+| AI / LLM | Groq, OpenAI-compatible |
 | Price feeds | Chainlink (spot), Coinbase Exchange API (historical candles) |
 | Yield | Aave, auto-deposits idle USDC into aBasUSDC when an order needs it |
 | Protocol interface | Model Context Protocol server (`mcp/server.ts`) over the same tool registry the chat UI uses |

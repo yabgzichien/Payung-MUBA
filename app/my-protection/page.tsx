@@ -205,9 +205,7 @@ export default function MyProtectionPage() {
                     </span>
                   </div>
                 </div>
-                <p className={styles.metaLine}>
-                  Network: Base · Protocol: Thetanuts{active.collateralSymbol ? ` · Collateral: ${active.collateralSymbol}` : ''}
-                </p>
+                <p className={styles.metaLine}>Network: Base · Protocol: Thetanuts</p>
               </div>
 
               <h2 className={styles.sectionTitle}>Protection at a glance</h2>

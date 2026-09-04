@@ -186,7 +186,17 @@ export function ProtectionFlowProvider({ children }: { children: ReactNode }) {
   }, [purchase, hydrated]);
 
   const appendMessage = useCallback((msg: ChatMessage) => {
-    setMessages((prev) => [...prev, msg]);
+    setMessages((prev) => {
+      // Revisiting a card (e.g. Back to options, then selecting again) moves
+      // that step to the end instead of leaving a stale duplicate behind —
+      // otherwise going back and forth a few times floods the transcript with
+      // near-identical "Protection options" / "Protection details reviewed" lines.
+      const deduped =
+        msg.from === 'payung' && msg.card
+          ? prev.filter((m) => !(m.from === 'payung' && m.card === msg.card))
+          : prev;
+      return [...deduped, msg];
+    });
   }, []);
 
   const rememberSafeAddress = useCallback((address: string | null) => {

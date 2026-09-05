@@ -6,7 +6,7 @@ import { matchLightCommand, type LightCommand } from './chatCommands';
 import { detectSmallTalk } from '@/src/small-talk';
 import type { ChatCardKind, Goal, QuoteCard } from './types';
 
-export type ReviewPhase = 'review' | 'simulating' | 'executing' | 'passed' | 'done';
+export type ReviewPhase = 'review' | 'checking' | 'executing' | 'passed' | 'done';
 
 type ChatFlowState = ReturnType<typeof useChatFlowInternal>;
 
@@ -94,7 +94,7 @@ function useChatFlowInternal() {
     if (wallet.connected && wallet.chainOk) {
       setReviewPhase('review');
       setReviewError(null);
-      appendMessage({ from: 'payung', text: 'Ready to simulate and buy:', card: 'review-execute' });
+      appendMessage({ from: 'payung', text: 'Ready to check and buy:', card: 'review-execute' });
     } else {
       setConnectError(null);
       appendMessage({ from: 'payung', text: 'Connect your wallet to continue.', card: 'connect-wallet' });
@@ -112,7 +112,7 @@ function useChatFlowInternal() {
       await connectWallet();
       setReviewPhase('review');
       setReviewError(null);
-      appendMessage({ from: 'payung', text: 'Wallet connected. Ready to simulate and buy:', card: 'review-execute' });
+      appendMessage({ from: 'payung', text: 'Wallet connected. Ready to check and buy:', card: 'review-execute' });
     } catch (e) {
       setConnectError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -134,13 +134,13 @@ function useChatFlowInternal() {
     appendMessage({ from: 'payung', text: "You're protected.", card: 'purchased' });
   }, [executeProtection, appendMessage]);
 
-  const handleSimulateAndExecute = useCallback(async () => {
-    setReviewPhase('simulating');
+  const handlePreflightAndExecute = useCallback(async () => {
+    setReviewPhase('checking');
     setReviewError(null);
     setReviewPartiallyExecuted(false);
-    const sim = await runPreflight();
-    if (!sim.ok) {
-      setReviewError(sim.error);
+    const preflight = await runPreflight();
+    if (!preflight.ok) {
+      setReviewError(preflight.error);
       setReviewPhase('review');
       return;
     }
@@ -168,14 +168,14 @@ function useChatFlowInternal() {
         case 'connect':
           void handleConnect();
           return;
-        case 'simulate':
+        case 'preflight':
         case 'execute':
           if (reviewPhase === 'passed') void handleExecute();
-          else void handleSimulateAndExecute();
+          else void handlePreflightAndExecute();
           return;
       }
     },
-    [quoteForTier, handleSelectQuote, appendMessage, handleConfirm, handleBackToOptions, handleConnect, reviewPhase, handleExecute, handleSimulateAndExecute]
+    [quoteForTier, handleSelectQuote, appendMessage, handleConfirm, handleBackToOptions, handleConnect, reviewPhase, handleExecute, handlePreflightAndExecute]
   );
 
   const handleUserText = useCallback(
@@ -239,7 +239,7 @@ function useChatFlowInternal() {
     handleConfirm,
     handleBackToOptions,
     handleConnect,
-    handleSimulateAndExecute,
+    handlePreflightAndExecute,
     handleExecute,
   };
 }
@@ -260,6 +260,6 @@ export const CARD_SUMMARY: Record<ChatCardKind, string> = {
   'quote-options': 'Protection options',
   'confirm-summary': 'Protection details reviewed',
   'connect-wallet': 'Wallet connected',
-  'review-execute': 'Simulated & submitted',
+  'review-execute': 'Checked & submitted',
   purchased: 'Protection purchased',
 };

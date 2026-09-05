@@ -7,9 +7,9 @@ import ui from '../ui.module.css';
 import styles from '../../review/page.module.css';
 
 /**
- * Combines the old review page's simulate -> passed -> executing phases into
+ * Combines the old review page's preflight -> passed -> executing phases into
  * one card, since the previous chat card already handled wallet connection.
- * "Simulate & buy" chains preflight straight into execution instead of
+ * "Check & buy" chains preflight straight into execution instead of
  * requiring a second click — one fewer step than the standalone page, which
  * fits a conversation better than a two-stage form.
  */
@@ -21,7 +21,7 @@ export function ReviewExecuteCard() {
     reviewPhase,
     reviewError,
     reviewPartiallyExecuted,
-    handleSimulateAndExecute,
+    handlePreflightAndExecute,
     handleExecute,
   } = useChatFlow();
 
@@ -30,7 +30,7 @@ export function ReviewExecuteCard() {
   if (reviewPhase === 'done') {
     return (
       <div className={styles.passedWrap}>
-        <p className={styles.passedBody}>Simulated, signed, and confirmed on-chain.</p>
+        <p className={styles.passedBody}>Checked, signed, and confirmed on-chain.</p>
       </div>
     );
   }
@@ -109,13 +109,13 @@ export function ReviewExecuteCard() {
           {judgment.sentence} · Live {selectedQuote.protocol} option on {selectedQuote.network}
         </p>
       </div>
-      <button className={ui.btnPrimary} onClick={handleSimulateAndExecute} disabled={reviewPhase === 'simulating'}>
-        {reviewPhase === 'simulating' ? (
+      <button className={ui.btnPrimary} onClick={handlePreflightAndExecute} disabled={reviewPhase === 'checking'}>
+        {reviewPhase === 'checking' ? (
           <>
-            <span className={ui.spinner} /> Simulating…
+            <span className={ui.spinner} /> Checking…
           </>
         ) : (
-          'Simulate & buy'
+          'Check & buy'
         )}
       </button>
     </div>

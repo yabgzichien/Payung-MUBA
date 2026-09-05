@@ -13,7 +13,7 @@ export type LightCommand =
   | { type: 'confirm' }
   | { type: 'back' }
   | { type: 'connect' }
-  | { type: 'simulate' }
+  | { type: 'preflight' }
   | { type: 'execute' };
 
 const PATTERNS: { card: ChatCardKind; re: RegExp; command: LightCommand }[] = [
@@ -23,7 +23,7 @@ const PATTERNS: { card: ChatCardKind; re: RegExp; command: LightCommand }[] = [
   { card: 'confirm-summary', re: /\b(confirm|yes|buy( it)?|go ahead|proceed|looks good)\b/, command: { type: 'confirm' } },
   { card: 'confirm-summary', re: /\b(back|change|different (option|protection))\b/, command: { type: 'back' } },
   { card: 'connect-wallet', re: /\b(connect( my)? wallet|connect)\b/, command: { type: 'connect' } },
-  { card: 'review-execute', re: /\b(simulate|check|preflight|dry run)\b/, command: { type: 'simulate' } },
+  { card: 'review-execute', re: /\b(check|preflight|dry run)\b/, command: { type: 'preflight' } },
   { card: 'review-execute', re: /\b(execute|buy( it)?|confirm|place( the)? order|proceed|go ahead)\b/, command: { type: 'execute' } },
 ];
 

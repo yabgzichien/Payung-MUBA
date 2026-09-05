@@ -10,9 +10,9 @@ import { contracts, describeJudgment, usd, usdWhole } from '../_lib/format';
 import ui from '../_lib/ui.module.css';
 import styles from './page.module.css';
 
-type Phase = 'review' | 'simulating' | 'passed' | 'executing' | 'error';
+type Phase = 'review' | 'checking' | 'passed' | 'executing' | 'error';
 
-export default function ReviewSimulatePage() {
+export default function ReviewCheckPage() {
   const router = useRouter();
   const { goal, selectedQuote, wallet, executionStep, runPreflight, executeProtection, hydrated } =
     useProtectionFlow();
@@ -35,8 +35,8 @@ export default function ReviewSimulatePage() {
   if (!hydrated) return <Shell step="review" />;
   if (!goal || !selectedQuote) return null;
 
-  async function handleSimulate() {
-    setPhase('simulating');
+  async function handleCheck() {
+    setPhase('checking');
     setError(null);
     const outcome = await runPreflight();
     if (!outcome.ok) {
@@ -69,7 +69,7 @@ export default function ReviewSimulatePage() {
           <div className={styles.passedIcon}>
             <IconCheck size={26} />
           </div>
-          <h1 className={styles.passedTitle}>{error ? 'Ready to continue' : 'Simulation passed'}</h1>
+          <h1 className={styles.passedTitle}>{error ? 'Ready to continue' : 'Check passed'}</h1>
           <p className={styles.passedBody}>
             {error
               ? 'Payung will pick up exactly where it stopped: confirmed steps are not repeated.'
@@ -119,8 +119,8 @@ export default function ReviewSimulatePage() {
 
   return (
     <Shell step="review">
-      <h1 className={ui.title}>Review & simulate</h1>
-      <p className={ui.subtitle}>Review your protection before Payung simulates it.</p>
+      <h1 className={ui.title}>Review & check</h1>
+      <p className={ui.subtitle}>Review your protection before Payung checks it.</p>
 
       {error && <div className={ui.errorBox}>{error}</div>}
 
@@ -147,13 +147,13 @@ export default function ReviewSimulatePage() {
       </div>
 
       <div className={styles.actions}>
-        <button className={ui.btnPrimary} onClick={handleSimulate} disabled={phase === 'simulating'}>
-          {phase === 'simulating' ? (
+        <button className={ui.btnPrimary} onClick={handleCheck} disabled={phase === 'checking'}>
+          {phase === 'checking' ? (
             <>
-              <span className={ui.spinner} /> Simulating…
+              <span className={ui.spinner} /> Checking…
             </>
           ) : (
-            'Simulate protection'
+            'Check protection'
           )}
         </button>
         <Link className={ui.linkBack} href="/protect/confirm" style={{ justifyContent: 'center' }}>

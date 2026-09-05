@@ -33,7 +33,7 @@ const STEPS = [
     Icon: IconFloor,
     num: '03',
     title: 'Confirm & protect',
-    body: 'See the payoff, simulate it, sign it from your own wallet.',
+    body: 'See the payoff, check it, sign it from your own wallet.',
     tag: 'On-chain proof',
   },
 ];

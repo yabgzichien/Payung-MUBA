@@ -1,5 +1,7 @@
 import type {
   CandidatesResponse,
+  ChatCardKind,
+  Goal,
   ParseResult,
   PrepareTxResponse,
   QuoteResponse,
@@ -21,8 +23,11 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-export function parseGoalText(text: string): Promise<ParseResult> {
-  return postJson<ParseResult>('/api/parse', { text });
+export function parseGoalText(
+  text: string,
+  context?: { goal?: Goal | null; card?: ChatCardKind | null }
+): Promise<ParseResult> {
+  return postJson<ParseResult>('/api/parse', { text, context });
 }
 
 export function fetchCandidates(spec: {

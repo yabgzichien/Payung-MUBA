@@ -29,6 +29,7 @@ export type ParseResult = {
   };
   missingFields: FieldKey[];
   fieldErrors: Partial<Record<FieldKey, string>>;
+  answer?: string;
 };
 
 export type Badge = {

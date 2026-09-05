@@ -66,11 +66,12 @@ Fields — use null for any field the text does not state or clearly imply. Neve
 - "asset" (the symbol they hold, exactly as named, e.g. "ETH", "BTC", or any other ticker they mention — or null)
 - "quantity" (number — how much of the asset they hold or want to protect, e.g. "1 ETH", "0.2 BTC", "keep 1 ETH", "protect my 2 ETH" gives quantity 1, 0.2, 2. If no amount to protect is mentioned, e.g. "keep ETH above $2,000", "protect ETH", use null)
 - "floorValue" (number — the price they mention — or null)
-- "floorMode" ("perUnit" if floorValue is the price of ONE unit of the asset — e.g. "the BTC price", "per ETH", "market price of $X", "not fall below $X", "above $X", "at $X" with no "total" wording — or "total" if floorValue is the value of their WHOLE holding — e.g. "worth $X total", "my holding worth $X". null if floorValue is null.)
+- "floorMode" ("perUnit" if floorValue is the price of ONE unit of the asset — e.g. "the BTC price", "per ETH", "market price of $X", "not fall below $X", "above $X", "at $X" with no "total" wording, or when a price is stated without saying "total" — or "total" if floorValue is the value of their WHOLE holding — e.g. "worth $X total", "my holding worth $X". null if floorValue is null.)
 - "horizonDays" (number — how many days until their deadline — or null)
-"two weeks" means 14. "a month" means 30. "end of next week" means about 10.
+"X weeks" means X * 7 days (e.g. "10 weeks" means 70, "2 weeks" means 14). "X months" means X * 30 days (e.g. "a month" means 30). "end of next week" means about 10. "X days" means X.
 Important: phrasing like "Keep 1 ETH above $2,200", "Protect 0.2 ETH at $2,300", or "1 ETH above $2,200" specifies BOTH the quantity (1 ETH, 0.2 ETH) and the per-unit floor price ($2,200, $2,300). Do NOT leave quantity as null when an amount like "1 ETH" is stated.
 Do NOT divide, multiply, or otherwise compute floorValue from quantity or vice versa — report only the number as stated.
+Phrasing like "change to 2 ETH", "make it 2 ETH", "what about 2 ETH", "what about 30 days", "2200 floor" is an incremental adjustment or continuation of a protection request — extract whatever fields are stated (e.g. quantity: 2, asset: "ETH") and set unmentioned fields to null. Do NOT output {"error": ...} for parameter adjustments or follow-up changes.
 Only output {"error":"<one short sentence why>"} when the text is not about protecting a crypto holding's value AT ALL (e.g. an unrelated question or a joke). If it IS a protection request but names an asset other than ETH/BTC, still fill in every other field normally — do NOT use the error field just because the asset is unsupported.`;
 
 export type FieldKey = 'asset' | 'quantity' | 'floor' | 'horizonDays';

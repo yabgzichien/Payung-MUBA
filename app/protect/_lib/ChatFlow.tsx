@@ -181,29 +181,43 @@ function useChatFlowInternal() {
   const handleUserText = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || sending) return;
+      if (!trimmed || sending || findingProtection) return;
 
-      if (!lastCard) {
-        setSending(true);
-        const { complete, error, goal: parsedGoal } = await submitGoalText(trimmed);
-        setSending(false);
-        if (!error && complete) await runFindProtection(parsedGoal);
-        return;
-      }
-
-      appendMessage({ from: 'you', text: trimmed });
+      // 1. Check if user typed a direct action shortcut for the visible card
       const cmd = matchLightCommand(lastCard, trimmed);
       if (cmd) {
+        appendMessage({ from: 'you', text: trimmed });
         runCommand(cmd);
         return;
       }
+
+      // 2. Deterministic small-talk / greetings
       const smallTalk = detectSmallTalk(trimmed);
-      appendMessage({
-        from: 'payung',
-        text: smallTalk ? SMALL_TALK_REPLIES[smallTalk] : "I didn't catch that — you can also just tap an option above.",
-      });
+      if (smallTalk) {
+        appendMessage({ from: 'you', text: trimmed });
+        appendMessage({ from: 'payung', text: SMALL_TALK_REPLIES[smallTalk] });
+        return;
+      }
+
+      // 3. Conversational AI & Goal Parser with full degree of freedom
+      setSending(true);
+      const outcome = await submitGoalText(trimmed, { goalContext: goal, cardContext: lastCard });
+      setSending(false);
+
+      if (outcome.complete && outcome.goal) {
+        await runFindProtection(outcome.goal);
+      }
     },
-    [sending, lastCard, submitGoalText, runFindProtection, appendMessage, runCommand]
+    [
+      sending,
+      findingProtection,
+      lastCard,
+      goal,
+      runCommand,
+      submitGoalText,
+      runFindProtection,
+      appendMessage,
+    ]
   );
 
   const handleExampleClick = useCallback(

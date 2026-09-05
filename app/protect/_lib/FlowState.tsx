@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type {
+  ChatCardKind,
   ChatMessage,
   Goal,
   ParseResult,
@@ -110,8 +111,8 @@ type FlowState = {
   appendMessage: (msg: ChatMessage) => void;
   submitGoalText: (
     text: string,
-    options?: { resetHistory?: boolean }
-  ) => Promise<{ complete: boolean; error: string | null; goal?: Goal }>;
+    options?: { resetHistory?: boolean; goalContext?: Goal | null; cardContext?: ChatCardKind | null }
+  ) => Promise<{ complete: boolean; error: string | null; goal?: Goal; answer?: string }>;
   fetchResults: (goalOverride?: Goal) => Promise<Outcome>;
   exploreFloor: (floorUsd: number) => Promise<QuoteCard | null>;
   applyExploredFloor: (floorUsd: number, quote: QuoteCard) => void;
@@ -204,66 +205,76 @@ export function ProtectionFlowProvider({ children }: { children: ReactNode }) {
     localSet(KEYS.safeAddress, address);
   }, []);
 
-  const submitGoalText = useCallback(async (text: string, options?: { resetHistory?: boolean }) => {
-    setMessages((prev) => [...prev, { from: 'you', text }]);
-    const smallTalk = detectSmallTalk(text);
-    if (smallTalk) {
-      setMessages((prev) => [...prev, { from: 'payung', text: SMALL_TALK_REPLIES[smallTalk] }]);
-      return { complete: false, error: null };
-    }
-    if (options?.resetHistory || goalTurnsRef.current.length === 0) {
-      setGoal(null);
+  const submitGoalText = useCallback(
+    async (
+      text: string,
+      options?: { resetHistory?: boolean; goalContext?: Goal | null; cardContext?: ChatCardKind | null }
+    ) => {
+      setMessages((prev) => [...prev, { from: 'you', text }]);
+      const smallTalk = detectSmallTalk(text);
+      if (smallTalk) {
+        setMessages((prev) => [...prev, { from: 'payung', text: SMALL_TALK_REPLIES[smallTalk] }]);
+        return { complete: false, error: null };
+      }
+
       if (options?.resetHistory) {
+        setGoal(null);
         goalTurnsRef.current = [];
       }
-    }
-    const combinedText = combineGoalText(goalTurnsRef.current, text);
-    goalTurnsRef.current = [...goalTurnsRef.current, text];
-    let result: ParseResult;
-    try {
-      result = await parseGoalText(combinedText);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      setMessages((prev) => [...prev, { from: 'payung', text: `I couldn't parse that: ${message}` }]);
-      return { complete: false, error: message };
-    }
-    const { spec, missingFields, fieldErrors } = result;
-    const complete =
-      missingFields.length === 0 &&
-      Object.keys(fieldErrors).length === 0 &&
-      spec.asset !== null &&
-      spec.quantity !== null &&
-      spec.floorTotalUsd !== null &&
-      spec.unitFloorUsd !== null &&
-      spec.horizonDays !== null;
 
-    if (complete) {
-      const reply =
-        `Got it. I'll look for live protection for ${spec.quantity} ${spec.asset}, around a ` +
-        `$${spec.unitFloorUsd!.toLocaleString()} protected price, covering the next ${spec.horizonDays} days.`;
+      const activeGoal = options?.goalContext ?? goal;
+      const combinedText = activeGoal ? text : combineGoalText(goalTurnsRef.current, text);
+      if (!activeGoal) {
+        goalTurnsRef.current = [...goalTurnsRef.current, text];
+      }
+
+      let result: ParseResult;
+      try {
+        result = await parseGoalText(combinedText, { goal: activeGoal, card: options?.cardContext });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setMessages((prev) => [...prev, { from: 'payung', text: `I couldn't parse that: ${message}` }]);
+        return { complete: false, error: message };
+      }
+
+      if (result.answer) {
+        setMessages((prev) => [...prev, { from: 'payung', text: result.answer }]);
+        return { complete: false, error: null, answer: result.answer };
+      }
+
+      const { spec, missingFields, fieldErrors } = result;
+      const complete =
+        missingFields.length === 0 &&
+        Object.keys(fieldErrors).length === 0 &&
+        spec.asset !== null &&
+        spec.quantity !== null &&
+        spec.floorTotalUsd !== null &&
+        spec.unitFloorUsd !== null &&
+        spec.horizonDays !== null;
+
+      if (complete) {
+        const reply =
+          `Got it. I'll look for live protection for ${spec.quantity} ${spec.asset}, around a ` +
+          `$${spec.unitFloorUsd!.toLocaleString()} protected price, covering the next ${spec.horizonDays} days.`;
+        setMessages((prev) => [...prev, { from: 'payung', text: reply }]);
+        const resolvedGoal: Goal = {
+          asset: spec.asset!,
+          quantity: spec.quantity!,
+          floorUsd: spec.unitFloorUsd!,
+          floorTotalUsd: spec.floorTotalUsd!,
+          days: spec.horizonDays!,
+        };
+        setGoal(resolvedGoal);
+        goalTurnsRef.current = [];
+        return { complete: true, error: null, goal: resolvedGoal };
+      }
+
+      const reply = describeMissing(result);
       setMessages((prev) => [...prev, { from: 'payung', text: reply }]);
-      const resolvedGoal: Goal = {
-        asset: spec.asset!,
-        quantity: spec.quantity!,
-        floorUsd: spec.unitFloorUsd!,
-        floorTotalUsd: spec.floorTotalUsd!,
-        days: spec.horizonDays!,
-      };
-      setGoal(resolvedGoal);
-      // A completed goal is a finished conversation — anything typed after
-      // this is a new request, not a continuation, and must not be blended
-      // with the turns that produced the goal that just completed.
-      goalTurnsRef.current = [];
-      // Returned directly (not just set on state) so a caller that immediately
-      // acts on completion — e.g. auto-fetching results — isn't reading `goal`
-      // from a closure that predates this render's setGoal.
-      return { complete: true, error: null, goal: resolvedGoal };
-    }
-
-    const reply = describeMissing(result);
-    setMessages((prev) => [...prev, { from: 'payung', text: reply }]);
-    return { complete: false, error: null };
-  }, []);
+      return { complete: false, error: null };
+    },
+    [goal]
+  );
 
   const runResultsFetch = useCallback(
     async (activeGoal: Goal): Promise<Outcome> => {
